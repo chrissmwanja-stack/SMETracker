@@ -1,5 +1,6 @@
 package com.example.smetracker.data.entities
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -20,17 +21,20 @@ enum class PaymentMethod {
         childColumns = ["customerId"],
         onDelete = ForeignKey.SET_NULL
     )],
-    indices = [Index(value = ["customerId"])]
+    indices = [
+        Index(value = ["customerId"]),
+        Index(value = ["inventoryItemId"])
+    ]
 )
 data class Sale(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val customerId: Long? = null,
-    val customerName: String,        // denormalized for quick display
+    val customerName: String,
     val description: String,
     val amount: Double,
-    val profit: Double = 0.0,  // Profit (amount - cost). Only non-zero when linked to an inventory item.
-    val inventoryItemId: Long? = null,  // set when this sale was made against a tracked inventory item
-    val quantity: Int = 1,
+    val profit: Double = 0.0,
+    val inventoryItemId: Long? = null,
+    @ColumnInfo(defaultValue = "1") val quantity: Int = 1,
     val date: Long = System.currentTimeMillis(),
     val paymentMethod: PaymentMethod = PaymentMethod.CASH
 )
