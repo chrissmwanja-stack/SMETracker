@@ -51,6 +51,15 @@ fun DashboardScreen(viewModel: SMEViewModel, navController: NavController) {
                         Text("Business Overview", fontSize = if (isTablet) 14.sp else 12.sp, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f))
                     }
                 },
+                actions = {
+                    IconButton(onClick = { navController.navigate(Screen.Reports.route) }) {
+                        Icon(
+                            Icons.Default.Assessment,
+                            contentDescription = "Reports",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary

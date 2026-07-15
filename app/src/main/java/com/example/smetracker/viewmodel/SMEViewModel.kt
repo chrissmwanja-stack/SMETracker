@@ -108,16 +108,35 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
     }
 
     // Sale Actions
-    fun addSale(customerName: String, description: String, amount: Double, paymentMethod: PaymentMethod) = viewModelScope.launch {
+    // For a custom/service sale not tied to tracked inventory (inventoryItemId = null), profit stays 0
+    // since there's no known cost basis. Pass an inventoryItemId to compute real profit and decrement stock.
+    fun addSale(
+        customerName: String,
+        description: String,
+        amount: Double,
+        paymentMethod: PaymentMethod,
+        inventoryItemId: Long? = null,
+        quantity: Int = 1
+    ) = viewModelScope.launch {
+        val soldItem = inventoryItemId?.let { id -> inventoryItems.value.find { it.id == id } }
+        val profit = soldItem?.let { (it.sellingPrice - it.costPrice) * quantity } ?: 0.0
+
         repository.insertSale(
             Sale(
                 customerName = customerName,
                 description = description,
                 amount = amount,
+                profit = profit,
+                inventoryItemId = inventoryItemId,
+                quantity = quantity,
                 paymentMethod = paymentMethod,
                 date = System.currentTimeMillis()
             )
         )
+
+        if (soldItem != null) {
+            repository.adjustStock(soldItem.id, -quantity)
+        }
     }
 
     fun deleteSale(sale: Sale) = viewModelScope.launch {

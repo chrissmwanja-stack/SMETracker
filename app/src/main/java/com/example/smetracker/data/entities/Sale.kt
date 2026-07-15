@@ -28,7 +28,9 @@ data class Sale(
     val customerName: String,        // denormalized for quick display
     val description: String,
     val amount: Double,
-    val profit: Double = 0.0,  // Profit (amount - cost)
+    val profit: Double = 0.0,  // Profit (amount - cost). Only non-zero when linked to an inventory item.
+    val inventoryItemId: Long? = null,  // set when this sale was made against a tracked inventory item
+    val quantity: Int = 1,
     val date: Long = System.currentTimeMillis(),
     val paymentMethod: PaymentMethod = PaymentMethod.CASH
 )
