@@ -13,19 +13,19 @@ class SMERepository(
     // ── Sales ─────────────────────────────────────────────────────
     val allSales: Flow<List<Sale>> = smeDao.getAllSales()
     val totalRevenue: Flow<Double?> = smeDao.getTotalRevenue()
-    
-    val todayRevenue: Flow<Double?> 
+
+    val todayRevenue: Flow<Double?>
         get() = smeDao.getTodayRevenue(getStartOfDay())
 
     fun getTodayRevenue(startOfDay: Long): Flow<Double?> = smeDao.getTodayRevenue(startOfDay)
-    
+
     suspend fun insertSale(sale: Sale) = smeDao.insertSale(sale)
     suspend fun updateSale(sale: Sale) = smeDao.insertSale(sale)
     suspend fun deleteSale(sale: Sale) = smeDao.deleteSale(sale)
 
     // ── Customers ─────────────────────────────────────────────────
     val allCustomers: Flow<List<Customer>> = smeDao.getAllCustomers()
-    
+
     fun searchCustomers(query: String): Flow<List<Customer>> = smeDao.searchCustomers(query)
     suspend fun insertCustomer(customer: Customer) = smeDao.insertCustomer(customer)
     suspend fun updateCustomer(customer: Customer) = smeDao.insertCustomer(customer)
@@ -48,7 +48,7 @@ class SMERepository(
 
     fun getLowStockCount(threshold: Int = 5): Flow<Long> = inventoryDao.getLowStockCount(threshold)
     fun getTotalItemCount(): Flow<Long> = inventoryDao.getTotalItemCount()
-    
+
     suspend fun insertInventoryItem(item: InventoryItem) = inventoryDao.insert(item)
     suspend fun updateInventoryItem(item: InventoryItem) = inventoryDao.update(item)
     suspend fun deleteInventoryItem(item: InventoryItem) = inventoryDao.delete(item)
@@ -58,12 +58,14 @@ class SMERepository(
     fun getAllExpenses(): Flow<List<Expense>> = smeDao.getAllExpenses()
     fun getTotalExpenses(): Flow<Double?> = smeDao.getTotalExpenses()
     suspend fun addExpense(expense: Expense) = smeDao.insertExpense(expense)
+    suspend fun deleteExpense(expense: Expense) = smeDao.deleteExpense(expense)
 
     // ── Tasks ────────────────────────────────────────────────────
     fun getPendingTasks(): Flow<List<Task>> = smeDao.getPendingTasks()
     fun getPendingTaskCount(): Flow<Long> = smeDao.getPendingTaskCount()
     suspend fun addTask(task: Task) = smeDao.insertTask(task)
     suspend fun completeTask(taskId: Long) = smeDao.markTaskAsCompleted(taskId, System.currentTimeMillis())
+    suspend fun deleteTask(task: Task) = smeDao.deleteTask(task)
 
     private fun getStartOfDay(): Long {
         val calendar = Calendar.getInstance()

@@ -26,6 +26,12 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
     val inventoryItems: StateFlow<List<InventoryItem>> = repository.allInventoryItems
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val expenses: StateFlow<List<Expense>> = repository.getAllExpenses()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val pendingTasks: StateFlow<List<Task>> = repository.getPendingTasks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val uiState: StateFlow<DashboardUiState> = combine(
         sales, customers, debts, inventoryItems
     ) { sales, customers, debts, inventory ->
@@ -113,8 +119,44 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
             )
         )
     }
-    
+
     fun deleteSale(sale: Sale) = viewModelScope.launch {
         repository.deleteSale(sale)
+    }
+
+    // Expense Actions
+    fun addExpense(description: String, amount: Double, category: String = "General", receiptNumber: String? = null) = viewModelScope.launch {
+        repository.addExpense(
+            Expense(
+                description = description,
+                amount = amount,
+                category = category,
+                receiptNumber = receiptNumber
+            )
+        )
+    }
+
+    fun deleteExpense(expense: Expense) = viewModelScope.launch {
+        repository.deleteExpense(expense)
+    }
+
+    // Task Actions
+    fun addTask(title: String, description: String? = null, priority: String = "Medium", dueDate: Long? = null) = viewModelScope.launch {
+        repository.addTask(
+            Task(
+                title = title,
+                description = description,
+                priority = priority,
+                dueDate = dueDate
+            )
+        )
+    }
+
+    fun completeTask(taskId: Long) = viewModelScope.launch {
+        repository.completeTask(taskId)
+    }
+
+    fun deleteTask(task: Task) = viewModelScope.launch {
+        repository.deleteTask(task)
     }
 }

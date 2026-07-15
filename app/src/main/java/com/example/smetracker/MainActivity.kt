@@ -51,6 +51,8 @@ class MainActivity : ComponentActivity() {
                         composable(Screen.InventoryReport.route) { InventoryReportScreen(viewModel = viewModel, navController = navController) }
                         composable(Screen.TopCustomers.route) { TopCustomersScreen(viewModel = viewModel, navController = navController) }
                         composable(Screen.PaymentBreakdown.route) { PaymentBreakdownScreen(viewModel = viewModel, navController = navController) }
+                        composable(Screen.Expenses.route) { ExpensesScreen(viewModel = viewModel, navController = navController) }
+                        composable(Screen.Tasks.route) { TasksScreen(viewModel = viewModel, navController = navController) }
                     }
                 }
             }

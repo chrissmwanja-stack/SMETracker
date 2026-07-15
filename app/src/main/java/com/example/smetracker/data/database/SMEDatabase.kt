@@ -40,7 +40,7 @@ abstract class SMEDatabase : RoomDatabase() {
                     SMEDatabase::class.java,
                     "sme_tracker_database"
                 )
-                    .fallbackToDestructiveMigration(false)  // add this
+                    .fallbackToDestructiveMigration(true)
                     .build()
                 INSTANCE = instance
                 instance

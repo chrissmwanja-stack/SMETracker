@@ -64,6 +64,9 @@ interface SMEDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertExpense(expense: Expense): Long
 
+    @Delete
+    suspend fun deleteExpense(expense: Expense)
+
     // ── Tasks ────────────────────────────────────────────────────
     @Query("SELECT * FROM tasks WHERE isCompleted = 0 ORDER BY dueDate ASC")
     fun getPendingTasks(): Flow<List<Task>>
@@ -76,4 +79,7 @@ interface SMEDao {
 
     @Query("UPDATE tasks SET isCompleted = 1, completedDate = :completedDate WHERE id = :taskId")
     suspend fun markTaskAsCompleted(taskId: Long, completedDate: Long)
+
+    @Delete
+    suspend fun deleteTask(task: Task)
 }

@@ -36,6 +36,8 @@ import com.example.smetracker.viewmodel.SMEViewModel
 @Composable
 fun DashboardScreen(viewModel: SMEViewModel, navController: NavController) {
     val uiState by viewModel.uiState.collectAsState()
+    val expenses by viewModel.expenses.collectAsState()
+    val pendingTasks by viewModel.pendingTasks.collectAsState()
     val windowSize = rememberWindowSize()
     val isTablet = windowSize != WindowSize.COMPACT
     val horizontalPadding = if (isTablet) 32.dp else 16.dp
@@ -78,9 +80,20 @@ fun DashboardScreen(viewModel: SMEViewModel, navController: NavController) {
                     onAddCustomer = { navController.navigate(Screen.AddCustomer.route) },
                     onAddInventory = { navController.navigate(Screen.AddInventory.route) },
                     onViewCustomers = { navController.navigate(Screen.Customers.route) },
-                    onViewInventory = { navController.navigate(Screen.Inventory.route) }
+                    onViewInventory = { navController.navigate(Screen.Inventory.route) },
+                    onViewExpenses = { navController.navigate(Screen.Expenses.route) },
+                    onViewTasks = { navController.navigate(Screen.Tasks.route) }
                 )
             }
+            item {
+                ExpensesTasksSection(
+                    totalExpenses = expenses.sumOf { it.amount },
+                    pendingTaskCount = pendingTasks.size,
+                    onViewExpenses = { navController.navigate(Screen.Expenses.route) },
+                    onViewTasks = { navController.navigate(Screen.Tasks.route) }
+                )
+            }
+
             item { ReportsSection(isTablet = isTablet, uiState = uiState, onViewInventory = { navController.navigate(Screen.Inventory.route) }) }
             item { Text("Recent Sales", fontWeight = FontWeight.SemiBold, fontSize = if (isTablet) 18.sp else 16.sp) }
             if (uiState.recentSales.isEmpty()) {
@@ -138,7 +151,7 @@ private fun SummarySection(isTablet: Boolean, uiState: DashboardUiState) {
 }
 
 @Composable
-private fun QuickActionsSection(isTablet: Boolean, onAddSale: () -> Unit, onAddDebt: () -> Unit, onAddCustomer: () -> Unit, onAddInventory: () -> Unit, onViewCustomers: () -> Unit, onViewInventory: () -> Unit) {
+private fun QuickActionsSection(isTablet: Boolean, onAddSale: () -> Unit, onAddDebt: () -> Unit, onAddCustomer: () -> Unit, onAddInventory: () -> Unit, onViewCustomers: () -> Unit, onViewInventory: () -> Unit, onViewExpenses: () -> Unit, onViewTasks: () -> Unit) {
     Column {
         SectionTitle("Quick Actions", isTablet)
         Spacer(Modifier.height(8.dp))
@@ -153,6 +166,8 @@ private fun QuickActionsSection(isTablet: Boolean, onAddSale: () -> Unit, onAddD
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(onClick = onViewCustomers, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp)) { Text("View Customers", fontSize = 14.sp) }
                 OutlinedButton(onClick = onViewInventory, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp)) { Text("View Inventory", fontSize = 14.sp) }
+                OutlinedButton(onClick = onViewExpenses, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp)) { Text("Expenses", fontSize = 14.sp) }
+                OutlinedButton(onClick = onViewTasks, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp)) { Text("Tasks", fontSize = 14.sp) }
             }
         } else {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -168,6 +183,31 @@ private fun QuickActionsSection(isTablet: Boolean, onAddSale: () -> Unit, onAddD
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = onViewCustomers, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp)) { Text("Customers", fontSize = 12.sp) }
                 OutlinedButton(onClick = onViewInventory, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp)) { Text("Inventory", fontSize = 12.sp) }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = onViewExpenses, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp)) { Text("Expenses", fontSize = 12.sp) }
+                OutlinedButton(onClick = onViewTasks, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp)) { Text("Tasks", fontSize = 12.sp) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpensesTasksSection(totalExpenses: Double, pendingTaskCount: Int, onViewExpenses: () -> Unit, onViewTasks: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Card(modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), onClick = onViewExpenses) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Expenses", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                Spacer(Modifier.height(4.dp))
+                Text(CurrencyUtils.formatUgx(totalExpenses), fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.error)
+            }
+        }
+        Card(modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), onClick = onViewTasks) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Pending Tasks", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                Spacer(Modifier.height(4.dp))
+                Text("$pendingTaskCount", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary)
             }
         }
     }

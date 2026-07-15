@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "155227601633",
+    "project_id": "smetracker-9825a",
+    "storage_bucket": "smetracker-9825a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:155227601633:android:3c75a8865fe998c5a155a0",
+        "android_client_info": {
+          "package_name": "com.example.smetracker"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3BGMoAHJKAdP9N1N8qjiMc21uzgSmK0k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
