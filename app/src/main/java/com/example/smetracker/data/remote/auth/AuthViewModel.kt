@@ -47,6 +47,38 @@ class AuthViewModel(
             authRepository.startPhoneVerification(phoneNumberE164, activity).collect { event ->
                 when (event) {
                     is OtpEvent.CodeSent -> {
+                        resendToken = event.token
+                        _screenState.value = AuthScreenState.EnterOtp(
+                            phoneNumberE164 = phoneNumberE164,
+                            verificationId = event.verificationId
+                        )
+                    }
+                    is OtpEvent.AutoVerified -> {
+                        val result = authRepository.signInWithCredential(event.credential)
+                        handleSignInResult(result, phoneNumberE164)
+                    }
+                    is OtpEvent.VerificationFailed -> {
+                        _screenState.value = AuthScreenState.Error(event.message)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Re-sends the OTP for the number currently in flight, using the force-resend
+     * token captured from the original CodeSent event. No-ops if called before
+     * a code has ever been sent (shouldn't be reachable from the UI in that state).
+     */
+    fun resendOtp(activity: Activity) {
+        val phoneNumberE164 = pendingPhoneNumber ?: return
+        val token = resendToken ?: return
+
+        viewModelScope.launch {
+            authRepository.resendVerification(phoneNumberE164, activity, token).collect { event ->
+                when (event) {
+                    is OtpEvent.CodeSent -> {
+                        resendToken = event.token
                         _screenState.value = AuthScreenState.EnterOtp(
                             phoneNumberE164 = phoneNumberE164,
                             verificationId = event.verificationId

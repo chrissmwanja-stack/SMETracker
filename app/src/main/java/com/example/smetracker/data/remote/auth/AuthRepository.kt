@@ -27,7 +27,10 @@ sealed class PhoneIndexResult {
  * collect it with normal coroutine machinery instead of nested callbacks.
  */
 sealed class OtpEvent {
-    data class CodeSent(val verificationId: String) : OtpEvent()
+    data class CodeSent(
+        val verificationId: String,
+        val token: PhoneAuthProvider.ForceResendingToken
+    ) : OtpEvent()
     data class AutoVerified(val credential: PhoneAuthCredential) : OtpEvent()
     data class VerificationFailed(val message: String) : OtpEvent()
 }
@@ -66,7 +69,7 @@ class AuthRepository(
                 verificationId: String,
                 token: PhoneAuthProvider.ForceResendingToken
             ) {
-                trySend(OtpEvent.CodeSent(verificationId))
+                trySend(OtpEvent.CodeSent(verificationId, token))
             }
         }
 
@@ -101,7 +104,7 @@ class AuthRepository(
                 verificationId: String,
                 newToken: PhoneAuthProvider.ForceResendingToken
             ) {
-                trySend(OtpEvent.CodeSent(verificationId))
+                trySend(OtpEvent.CodeSent(verificationId, newToken))
             }
         }
 
@@ -143,24 +146,17 @@ class AuthRepository(
      * Call this immediately after a successful sign-in.
      */
     suspend fun resolvePhoneIndex(phoneNumberE164: String): PhoneIndexResult {
-        return try {
-            val doc = firestore.collection("phoneIndex")
-                .document(phoneNumberE164)
-                .get()
-                .await()
+        val doc = firestore.collection("phoneIndex")
+            .document(phoneNumberE164)
+            .get()
+            .await()
 
-            if (!doc.exists()) return PhoneIndexResult.NotRegistered
+        if (!doc.exists()) return PhoneIndexResult.NotRegistered
 
-            val businessId = doc.getString("businessId") ?: return PhoneIndexResult.NotRegistered
-            val role = doc.getString("role") ?: return PhoneIndexResult.NotRegistered
+        val businessId = doc.getString("businessId") ?: return PhoneIndexResult.NotRegistered
+        val role = doc.getString("role") ?: return PhoneIndexResult.NotRegistered
 
-            PhoneIndexResult.Registered(businessId = businessId, role = role)
-        } catch (e: Exception) {
-            // Handle offline case: if we can't reach the server and don't have it cached,
-            // return NotRegistered so the UI can at least show an error or the landing page
-            // instead of crashing. In a more robust app, we'd have a specific Offline result.
-            PhoneIndexResult.NotRegistered
-        }
+        return PhoneIndexResult.Registered(businessId = businessId, role = role)
     }
 
     fun signOut() {

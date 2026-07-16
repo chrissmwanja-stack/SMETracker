@@ -50,10 +50,12 @@ fun LoginScreen(
 
             is AuthScreenState.EnterOtp -> OtpEntryContent(
                 phoneNumber = s.phoneNumberE164,
+                verificationId = s.verificationId,
                 onSubmit = { code ->
                     viewModel.submitOtpCode(s.verificationId, code, s.phoneNumberE164)
                 },
-                onBack = { viewModel.resetToPhoneEntry() }
+                onBack = { viewModel.resetToPhoneEntry() },
+                onResend = { activity?.let { viewModel.resendOtp(it) } }
             )
 
             is AuthScreenState.NotRegistered -> NotRegisteredContent(
@@ -108,10 +110,23 @@ private fun PhoneEntryContent(onSubmit: (String) -> Unit) {
 @Composable
 private fun OtpEntryContent(
     phoneNumber: String,
+    verificationId: String,
     onSubmit: (String) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onResend: () -> Unit
 ) {
     var code by remember { mutableStateOf("") }
+
+    // Cooldown resets whenever a fresh verificationId comes in — i.e. right
+    // after the initial send AND right after a successful resend.
+    var secondsUntilResend by remember(verificationId) { mutableStateOf(30) }
+    LaunchedEffect(verificationId) {
+        secondsUntilResend = 30
+        while (secondsUntilResend > 0) {
+            kotlinx.coroutines.delay(1000)
+            secondsUntilResend -= 1
+        }
+    }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text("Enter the code sent to", style = MaterialTheme.typography.bodyMedium)
@@ -132,6 +147,12 @@ private fun OtpEntryContent(
             Text("Verify")
         }
         Spacer(Modifier.height(8.dp))
+        TextButton(
+            onClick = onResend,
+            enabled = secondsUntilResend == 0
+        ) {
+            Text(if (secondsUntilResend > 0) "Resend code in ${secondsUntilResend}s" else "Resend code")
+        }
         TextButton(onClick = onBack) {
             Text("Use a different number")
         }

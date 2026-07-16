@@ -34,7 +34,13 @@ import com.example.smetracker.viewmodel.SMEViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DashboardScreen(viewModel: SMEViewModel, navController: NavController, onSignOut: () -> Unit = {}) {
+fun DashboardScreen(
+    viewModel: SMEViewModel,
+    navController: NavController,
+    onSignOut: () -> Unit = {},
+    isOwner: Boolean = false,
+    onAddWorker: () -> Unit = {}
+) {
     val uiState by viewModel.uiState.collectAsState()
     val expenses by viewModel.expenses.collectAsState()
     val pendingTasks by viewModel.pendingTasks.collectAsState()
@@ -58,6 +64,15 @@ fun DashboardScreen(viewModel: SMEViewModel, navController: NavController, onSig
                             contentDescription = "Reports",
                             tint = MaterialTheme.colorScheme.onPrimary
                         )
+                    }
+                    if (isOwner) {
+                        IconButton(onClick = onAddWorker) {
+                            Icon(
+                                Icons.Default.PersonAdd,
+                                contentDescription = "Add worker",
+                                tint = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
                     }
                     IconButton(onClick = onSignOut) {
                         Icon(

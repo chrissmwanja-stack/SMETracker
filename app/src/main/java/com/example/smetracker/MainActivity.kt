@@ -83,7 +83,9 @@ class MainActivity : ComponentActivity() {
                                     onSignOut = {
                                         authViewModel.signOut()
                                         entered = null
-                                    }
+                                    },
+                                    isOwner = currentEntry.second == MemberRole.OWNER,
+                                    onAddWorker = { navController.navigate(Screen.AddWorker.route) }
                                 )
                             }
                             composable(Screen.AddSale.route) { AddSaleScreen(viewModel = viewModel, navController = navController) }
@@ -100,6 +102,14 @@ class MainActivity : ComponentActivity() {
                             composable(Screen.PaymentBreakdown.route) { PaymentBreakdownScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.Expenses.route) { ExpensesScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.Tasks.route) { TasksScreen(viewModel = viewModel, navController = navController) }
+                            composable(Screen.AddWorker.route) {
+                                com.example.smetracker.ui.auth.AddWorkerScreen(
+                                    businessId = currentEntry.first,
+                                    businessRepository = businessRepository,
+                                    onWorkerAdded = { navController.popBackStack() },
+                                    onCancel = { navController.popBackStack() }
+                                )
+                            }
                         }
                     }
                 }
