@@ -75,6 +75,7 @@ dependencies {
     ksp(libs.room.compiler)
 
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.kotlinx.coroutines.play.services)
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 

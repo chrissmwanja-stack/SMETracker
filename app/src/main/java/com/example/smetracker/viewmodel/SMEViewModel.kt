@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.smetracker.data.DashboardAnalytics
 import com.example.smetracker.data.DashboardUiState
 import com.example.smetracker.data.entities.*
+import com.example.smetracker.data.remote.sync.SyncEngine
 import com.example.smetracker.repository.SMERepository
 import com.example.smetracker.utils.IdGenerator
 import com.example.smetracker.utils.TimeUtils
@@ -13,7 +14,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-class SMEViewModel(private val repository: SMERepository) : ViewModel() {
+class SMEViewModel(
+    private val repository: SMERepository,
+    // Nullable for now — only Customer syncs in this Phase 3 proof, and tests /
+    // previews that don't need sync can keep constructing this ViewModel with
+    // just a repository.
+    private val syncEngine: SyncEngine? = null
+) : ViewModel() {
 
     val sales: StateFlow<List<Sale>> = repository.allSales
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -59,10 +66,12 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
     // Customer Actions
     fun insertCustomer(customer: Customer) = viewModelScope.launch {
         repository.insertCustomer(customer)
+        syncEngine?.requestPush()
     }
 
     fun addCustomer(name: String, phone: String = "", email: String = "") = viewModelScope.launch {
         repository.insertCustomer(Customer(name = name, phone = phone, email = email))
+        syncEngine?.requestPush()
     }
 
     // Callers that already have a persisted Customer (blank id would mean "not yet
@@ -73,6 +82,7 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
         } else {
             repository.updateCustomer(customer)
         }
+        syncEngine?.requestPush()
     }
 
     fun deleteCustomer(customer: Customer) = viewModelScope.launch {

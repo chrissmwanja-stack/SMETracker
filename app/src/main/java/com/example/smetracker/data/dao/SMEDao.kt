@@ -38,6 +38,13 @@ interface SMEDao {
     @Delete
     suspend fun deleteCustomer(customer: Customer)
 
+    // ── Sync (Customer, Phase 3 proof) ──────────────────────────────
+    @Query("SELECT * FROM customers WHERE pendingSync = 1")
+    suspend fun getPendingSyncCustomers(): List<Customer>
+
+    @Query("UPDATE customers SET pendingSync = 0 WHERE id = :customerId")
+    suspend fun clearCustomerPendingSync(customerId: String)
+
     // ── Debts ────────────────────────────────────────────────────
     @Query("SELECT * FROM debts ORDER BY date DESC")
     fun getAllDebts(): Flow<List<Debt>>
