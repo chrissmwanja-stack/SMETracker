@@ -30,6 +30,6 @@ interface InventoryDao {
     @Delete
     suspend fun delete(item: InventoryItem)
 
-    @Query("UPDATE inventory_items SET quantity = quantity + :amount, updatedAt = :timestamp WHERE id = :itemId")
-    suspend fun adjustStock(itemId: Long, amount: Int, timestamp: Long)
+    @Query("UPDATE inventory_items SET quantity = quantity + :amount, updatedAt = :timestamp, pendingSync = 1 WHERE id = :itemId")
+    suspend fun adjustStock(itemId: String, amount: Int, timestamp: Long)
 }

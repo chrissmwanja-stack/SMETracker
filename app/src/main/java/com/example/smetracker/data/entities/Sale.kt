@@ -5,6 +5,7 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.example.smetracker.utils.IdGenerator
 
 enum class PaymentMethod {
     CASH,
@@ -27,14 +28,15 @@ enum class PaymentMethod {
     ]
 )
 data class Sale(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val customerId: Long? = null,
+    @PrimaryKey val id: String = IdGenerator.newId(),
+    val customerId: String? = null,
     val customerName: String,
     val description: String,
     val amount: Double,
     val profit: Double = 0.0,
-    val inventoryItemId: Long? = null,
+    val inventoryItemId: String? = null,
     @ColumnInfo(defaultValue = "1") val quantity: Int = 1,
     val date: Long = System.currentTimeMillis(),
-    val paymentMethod: PaymentMethod = PaymentMethod.CASH
+    val paymentMethod: PaymentMethod = PaymentMethod.CASH,
+    val pendingSync: Boolean = true
 )

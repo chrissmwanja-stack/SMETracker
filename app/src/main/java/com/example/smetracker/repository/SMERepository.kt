@@ -39,7 +39,7 @@ class SMERepository(
     suspend fun insertDebt(debt: Debt) = smeDao.insertDebt(debt)
     suspend fun updateDebt(debt: Debt) = smeDao.insertDebt(debt)
     suspend fun deleteDebt(debt: Debt) = smeDao.deleteDebt(debt)
-    suspend fun markDebtPaid(debtId: Long) = smeDao.markDebtAsPaid(debtId)
+    suspend fun markDebtPaid(debtId: String) = smeDao.markDebtAsPaid(debtId)
 
     // ── Inventory ────────────────────────────────────────────────
     val allInventoryItems: Flow<List<InventoryItem>> = inventoryDao.getAllItems()
@@ -52,7 +52,7 @@ class SMERepository(
     suspend fun insertInventoryItem(item: InventoryItem) = inventoryDao.insert(item)
     suspend fun updateInventoryItem(item: InventoryItem) = inventoryDao.update(item)
     suspend fun deleteInventoryItem(item: InventoryItem) = inventoryDao.delete(item)
-    suspend fun adjustStock(itemId: Long, amount: Int) = inventoryDao.adjustStock(itemId, amount, System.currentTimeMillis())
+    suspend fun adjustStock(itemId: String, amount: Int) = inventoryDao.adjustStock(itemId, amount, System.currentTimeMillis())
 
     // ── Expenses ─────────────────────────────────────────────────
     fun getAllExpenses(): Flow<List<Expense>> = smeDao.getAllExpenses()
@@ -64,7 +64,7 @@ class SMERepository(
     fun getPendingTasks(): Flow<List<Task>> = smeDao.getPendingTasks()
     fun getPendingTaskCount(): Flow<Long> = smeDao.getPendingTaskCount()
     suspend fun addTask(task: Task) = smeDao.insertTask(task)
-    suspend fun completeTask(taskId: Long) = smeDao.markTaskAsCompleted(taskId, System.currentTimeMillis())
+    suspend fun completeTask(taskId: String) = smeDao.markTaskAsCompleted(taskId, System.currentTimeMillis())
     suspend fun deleteTask(task: Task) = smeDao.deleteTask(task)
 
     private fun getStartOfDay(): Long {

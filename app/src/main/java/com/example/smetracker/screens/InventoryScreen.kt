@@ -131,8 +131,8 @@ private fun InventoryListItem(
                 Text(item.category, fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.Gray)
                 Spacer(Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Qty: ${item.quantity}", fontSize = 14.sp, 
-                         color = if (item.quantity <= item.reorderLevel) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                    Text("Qty: ${item.quantity}", fontSize = 14.sp,
+                        color = if (item.quantity <= item.reorderLevel) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
                     Text("Price: UGX ${ugx.format(item.sellingPrice.toLong())}", fontSize = 14.sp)
                 }
             }
@@ -194,7 +194,7 @@ private fun InventoryItemDialog(
                     Button(onClick = {
                         onConfirm(
                             InventoryItem(
-                                id = item?.id ?: 0,
+                                id = item?.id ?: "",
                                 name = name,
                                 category = category,
                                 quantity = quantity.toIntOrNull() ?: 0,

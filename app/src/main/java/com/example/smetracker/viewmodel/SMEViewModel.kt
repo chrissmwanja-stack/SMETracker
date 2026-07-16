@@ -7,6 +7,7 @@ import com.example.smetracker.data.DashboardAnalytics
 import com.example.smetracker.data.DashboardUiState
 import com.example.smetracker.data.entities.*
 import com.example.smetracker.repository.SMERepository
+import com.example.smetracker.utils.IdGenerator
 import com.example.smetracker.utils.TimeUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -64,9 +65,11 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
         repository.insertCustomer(Customer(name = name, phone = phone, email = email))
     }
 
+    // Callers that already have a persisted Customer (blank id would mean "not yet
+    // saved") go to update; a blank id means the id needs generating on first insert.
     fun upsertCustomer(customer: Customer) = viewModelScope.launch {
-        if (customer.id == 0L) {
-            repository.insertCustomer(customer)
+        if (customer.id.isBlank()) {
+            repository.insertCustomer(customer.copy(id = IdGenerator.newId()))
         } else {
             repository.updateCustomer(customer)
         }
@@ -81,14 +84,17 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
         repository.insertDebt(debt)
     }
 
-    fun markDebtAsPaid(debtId: Long) = viewModelScope.launch {
+    fun markDebtAsPaid(debtId: String) = viewModelScope.launch {
         repository.markDebtPaid(debtId)
     }
 
     // Inventory Actions
+    // InventoryItemDialog is used for both Add and Edit; it passes a blank id
+    // for a brand-new item (mirroring the old id == 0L convention), so a fresh
+    // id is only generated here, at the moment we know it's really an insert.
     fun upsertInventoryItem(item: InventoryItem) = viewModelScope.launch {
-        if (item.id == 0L) {
-            repository.insertInventoryItem(item)
+        if (item.id.isBlank()) {
+            repository.insertInventoryItem(item.copy(id = IdGenerator.newId()))
         } else {
             repository.updateInventoryItem(item)
         }
@@ -111,7 +117,7 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
         repository.deleteInventoryItem(item)
     }
 
-    fun adjustStock(itemId: Long, amount: Int) = viewModelScope.launch {
+    fun adjustStock(itemId: String, amount: Int) = viewModelScope.launch {
         repository.adjustStock(itemId, amount)
     }
 
@@ -123,7 +129,7 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
         description: String,
         amount: Double,
         paymentMethod: PaymentMethod,
-        inventoryItemId: Long? = null,
+        inventoryItemId: String? = null,
         quantity: Int = 1
     ) = viewModelScope.launch {
         val soldItem = inventoryItemId?.let { id -> inventoryItems.value.find { it.id == id } }
@@ -179,7 +185,7 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
         )
     }
 
-    fun completeTask(taskId: Long) = viewModelScope.launch {
+    fun completeTask(taskId: String) = viewModelScope.launch {
         repository.completeTask(taskId)
     }
 

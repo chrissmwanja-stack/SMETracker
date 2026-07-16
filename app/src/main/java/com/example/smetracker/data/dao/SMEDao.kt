@@ -51,8 +51,8 @@ interface SMEDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDebt(debt: Debt): Long
 
-    @Query("UPDATE debts SET isPaid = 1 WHERE id = :debtId")
-    suspend fun markDebtAsPaid(debtId: Long)
+    @Query("UPDATE debts SET isPaid = 1, pendingSync = 1 WHERE id = :debtId")
+    suspend fun markDebtAsPaid(debtId: String)
 
     @Delete
     suspend fun deleteDebt(debt: Debt)
@@ -80,8 +80,8 @@ interface SMEDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTask(task: Task): Long
 
-    @Query("UPDATE tasks SET isCompleted = 1, completedDate = :completedDate WHERE id = :taskId")
-    suspend fun markTaskAsCompleted(taskId: Long, completedDate: Long)
+    @Query("UPDATE tasks SET isCompleted = 1, completedDate = :completedDate, pendingSync = 1 WHERE id = :taskId")
+    suspend fun markTaskAsCompleted(taskId: String, completedDate: Long)
 
     @Delete
     suspend fun deleteTask(task: Task)

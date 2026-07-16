@@ -20,7 +20,7 @@ import com.example.smetracker.data.entities.Task
 
 @Database(
     entities = [Sale::class, Customer::class, Debt::class, InventoryItem::class, Expense::class, Task::class],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -44,6 +44,12 @@ abstract class SMEDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_sales_inventoryItemId ON sales(inventoryItemId)")
             }
         }
+
+        // v6 -> v7: primary keys (and the FKs referencing them) switched from Long
+        // autoincrement to client-generated Firestore String IDs, and a `pendingSync`
+        // column was added to every entity for the Phase 3 sync engine. No real user
+        // data exists yet, so this relies on fallbackToDestructiveMigration below
+        // rather than a hand-written Migration — the local DB is simply recreated.
 
         fun getDatabase(context: Context): SMEDatabase {
             return INSTANCE ?: synchronized(this) {
