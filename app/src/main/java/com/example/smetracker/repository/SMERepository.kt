@@ -28,7 +28,7 @@ class SMERepository(
 
     fun searchCustomers(query: String): Flow<List<Customer>> = smeDao.searchCustomers(query)
     suspend fun insertCustomer(customer: Customer) = smeDao.insertCustomer(customer)
-    suspend fun updateCustomer(customer: Customer) = smeDao.insertCustomer(customer)
+    suspend fun updateCustomer(customer: Customer) = smeDao.updateCustomer(customer)
     suspend fun deleteCustomer(customer: Customer) = smeDao.deleteCustomer(customer)
 
     // ── Debts ────────────────────────────────────────────────────

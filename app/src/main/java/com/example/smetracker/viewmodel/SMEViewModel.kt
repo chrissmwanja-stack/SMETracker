@@ -64,6 +64,14 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
         repository.insertCustomer(Customer(name = name, phone = phone, email = email))
     }
 
+    fun upsertCustomer(customer: Customer) = viewModelScope.launch {
+        if (customer.id == 0L) {
+            repository.insertCustomer(customer)
+        } else {
+            repository.updateCustomer(customer)
+        }
+    }
+
     fun deleteCustomer(customer: Customer) = viewModelScope.launch {
         repository.deleteCustomer(customer)
     }

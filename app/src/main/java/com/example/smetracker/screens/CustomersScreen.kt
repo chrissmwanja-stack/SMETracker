@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +28,7 @@ fun CustomersScreen(viewModel: SMEViewModel, navController: NavController) {
 
     val customers by viewModel.customers.collectAsState()
     var showDialog by remember { mutableStateOf(false) }
+    var editingCustomer by remember { mutableStateOf<Customer?>(null) }
 
     Scaffold(
         topBar = {
@@ -94,6 +96,7 @@ fun CustomersScreen(viewModel: SMEViewModel, navController: NavController) {
                 items(customers, key = { it.id }) { customer ->
                     CustomerItem(
                         customer = customer,
+                        onEdit = { editingCustomer = customer },
                         onDelete = { viewModel.deleteCustomer(customer) }
                     )
                 }
@@ -111,10 +114,21 @@ fun CustomersScreen(viewModel: SMEViewModel, navController: NavController) {
             }
         )
     }
+
+    editingCustomer?.let { customer ->
+        EditCustomerDialog(
+            customer = customer,
+            onDismiss = { editingCustomer = null },
+            onConfirm = { updated ->
+                viewModel.upsertCustomer(updated)
+                editingCustomer = null
+            }
+        )
+    }
 }
 
 @Composable
-private fun CustomerItem(customer: Customer, onDelete: () -> Unit) {
+private fun CustomerItem(customer: Customer, onEdit: () -> Unit, onDelete: () -> Unit) {
     var showConfirm by remember { mutableStateOf(false) }
 
     Card(
@@ -155,12 +169,21 @@ private fun CustomerItem(customer: Customer, onDelete: () -> Unit) {
                 }
             }
 
-            IconButton(onClick = { showConfirm = true }) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Delete",
-                    tint = MaterialTheme.colorScheme.error
-                )
+            Row {
+                IconButton(onClick = onEdit) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Edit",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                IconButton(onClick = { showConfirm = true }) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         }
     }
@@ -232,6 +255,82 @@ private fun AddCustomerDialog(
                         onClick = {
                             if (name.isBlank()) { nameError = true } else {
                                 onConfirm(name.trim(), phone.trim())
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.medium
+                    ) { Text("Save") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditCustomerDialog(
+    customer: Customer,
+    onDismiss: () -> Unit,
+    onConfirm: (Customer) -> Unit
+) {
+    var name by remember { mutableStateOf(customer.name) }
+    var phone by remember { mutableStateOf(customer.phone) }
+    var email by remember { mutableStateOf(customer.email) }
+    var nameError by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("Edit Customer", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; nameError = false },
+                    label = { Text("Full Name *") },
+                    isError = nameError,
+                    supportingText = { if (nameError) Text("Name is required") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Phone Number") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Email") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape = MaterialTheme.shapes.medium
+                    ) { Text("Cancel") }
+
+                    Button(
+                        onClick = {
+                            if (name.isBlank()) { nameError = true } else {
+                                onConfirm(
+                                    customer.copy(
+                                        name = name.trim(),
+                                        phone = phone.trim(),
+                                        email = email.trim()
+                                    )
+                                )
                             }
                         },
                         modifier = Modifier.weight(1f),
