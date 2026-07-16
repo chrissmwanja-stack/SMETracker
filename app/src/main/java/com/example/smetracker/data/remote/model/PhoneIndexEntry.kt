@@ -1,7 +1,5 @@
 package com.example.smetracker.data.remote.model
 
-package com.example.smetracker.data.remote.model
-
 // Firestore path: phoneIndex/{phoneNumberE164}  (top-level collection, not nested under a business)
 //
 // Purpose: after a phone number completes Firebase Phone Auth, the app needs to know
