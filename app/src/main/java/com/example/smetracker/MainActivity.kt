@@ -58,11 +58,10 @@ class MainActivity : ComponentActivity() {
                     var entered by remember {
                         mutableStateOf<Pair<String, MemberRole>?>(null)
                     }
+                    val authViewModel: AuthViewModel = viewModel(factory = authViewModelFactory)
 
                     val currentEntry = entered
                     if (currentEntry == null) {
-                        val authViewModel: AuthViewModel = viewModel(factory = authViewModelFactory)
-
                         AuthNavGate(
                             context = applicationContext,
                             authViewModel = authViewModel,
@@ -77,7 +76,16 @@ class MainActivity : ComponentActivity() {
                         val viewModel: SMEViewModel = viewModel(factory = viewModelFactory)
 
                         NavHost(navController = navController, startDestination = Screen.Dashboard.route) {
-                            composable(Screen.Dashboard.route) { DashboardScreen(viewModel = viewModel, navController = navController) }
+                            composable(Screen.Dashboard.route) {
+                                DashboardScreen(
+                                    viewModel = viewModel,
+                                    navController = navController,
+                                    onSignOut = {
+                                        authViewModel.signOut()
+                                        entered = null
+                                    }
+                                )
+                            }
                             composable(Screen.AddSale.route) { AddSaleScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.AddDebt.route) { AddDebtScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.AddCustomer.route) { AddCustomerScreen(viewModel = viewModel, navController = navController) }

@@ -143,17 +143,24 @@ class AuthRepository(
      * Call this immediately after a successful sign-in.
      */
     suspend fun resolvePhoneIndex(phoneNumberE164: String): PhoneIndexResult {
-        val doc = firestore.collection("phoneIndex")
-            .document(phoneNumberE164)
-            .get()
-            .await()
+        return try {
+            val doc = firestore.collection("phoneIndex")
+                .document(phoneNumberE164)
+                .get()
+                .await()
 
-        if (!doc.exists()) return PhoneIndexResult.NotRegistered
+            if (!doc.exists()) return PhoneIndexResult.NotRegistered
 
-        val businessId = doc.getString("businessId") ?: return PhoneIndexResult.NotRegistered
-        val role = doc.getString("role") ?: return PhoneIndexResult.NotRegistered
+            val businessId = doc.getString("businessId") ?: return PhoneIndexResult.NotRegistered
+            val role = doc.getString("role") ?: return PhoneIndexResult.NotRegistered
 
-        return PhoneIndexResult.Registered(businessId = businessId, role = role)
+            PhoneIndexResult.Registered(businessId = businessId, role = role)
+        } catch (e: Exception) {
+            // Handle offline case: if we can't reach the server and don't have it cached,
+            // return NotRegistered so the UI can at least show an error or the landing page
+            // instead of crashing. In a more robust app, we'd have a specific Offline result.
+            PhoneIndexResult.NotRegistered
+        }
     }
 
     fun signOut() {
