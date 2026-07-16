@@ -127,6 +127,12 @@ private fun SummarySection(isTablet: Boolean, uiState: DashboardUiState) {
     Column {
         SectionTitle("Summary", isTablet)
         Spacer(Modifier.height(8.dp))
+        NetProfitBanner(
+            todayNetProfit = uiState.analytics.dailySales.netProfit,
+            monthNetProfit = uiState.analytics.monthlySales.netProfit,
+            isTablet = isTablet
+        )
+        Spacer(Modifier.height(if (isTablet) 12.dp else 10.dp))
         if (isTablet) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SummaryCard(Modifier.weight(1f), "Today's Revenue", CurrencyUtils.formatUgx(uiState.todayRevenue), Icons.Default.AttachMoney, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
@@ -154,6 +160,56 @@ private fun SummarySection(isTablet: Boolean, uiState: DashboardUiState) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SummaryCard(Modifier.weight(1f), "Stock Value", CurrencyUtils.formatUgx(uiState.totalStockValue), Icons.Default.Inventory, MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
                 SummaryCard(Modifier.weight(1f), "Low Stock", "${uiState.lowStockItems.size} items", Icons.Default.WarningAmber, if (hasLowStock) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant, if (hasLowStock) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun NetProfitBanner(todayNetProfit: Double, monthNetProfit: Double, isTablet: Boolean) {
+    // Net profit (gross margin minus expenses) is the number owners actually need at a glance,
+    // so it gets a full-width, color-coded banner rather than being buried in a sub-report.
+    val isPositive = todayNetProfit >= 0
+    val bannerColor = if (isPositive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer
+    val contentColor = if (isPositive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = bannerColor),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(if (isTablet) 20.dp else 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(
+                        if (isPositive) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text("Today's Net Profit", fontSize = 13.sp, color = contentColor.copy(alpha = 0.85f))
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    CurrencyUtils.formatUgx(todayNetProfit),
+                    fontSize = if (isTablet) 28.sp else 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = contentColor
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text("This Month", fontSize = 12.sp, color = contentColor.copy(alpha = 0.7f))
+                Text(
+                    CurrencyUtils.formatUgx(monthNetProfit),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = contentColor
+                )
             }
         }
     }
@@ -230,6 +286,7 @@ private fun ReportsSection(isTablet: Boolean, uiState: DashboardUiState, onViewI
         if (isTablet) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ProfitReportCard(uiState.analytics)
                     SalesReportCard(uiState.analytics)
                     TopCustomersCard(uiState.analytics.topCustomers)
                 }
@@ -249,6 +306,7 @@ private fun ReportsSection(isTablet: Boolean, uiState: DashboardUiState, onViewI
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (uiState.lowStockItems.isNotEmpty()) { LowStockBanner(uiState.lowStockItems, onViewInventory) }
+                ProfitReportCard(uiState.analytics)
                 SalesReportCard(uiState.analytics)
                 InventoryReportCard(
                     totalItems = uiState.inventoryItems.size,
@@ -314,6 +372,47 @@ private fun SaleItem(sale: Sale, modifier: Modifier = Modifier) {
                 Text(sale.description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text(CurrencyUtils.formatUgx(sale.amount), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+@Composable
+private fun ProfitReportCard(analytics: DashboardAnalytics) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), elevation = CardDefaults.cardElevation(1.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Profit & Loss", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Spacer(Modifier.height(12.dp))
+            ProfitPeriodRow("Today", analytics.dailySales)
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            ProfitPeriodRow("This Week", analytics.weeklySales)
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            ProfitPeriodRow("This Month", analytics.monthlySales)
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            ProfitPeriodRow("All Time", analytics.allTimeSales, isBold = true)
+        }
+    }
+}
+
+@Composable
+private fun ProfitPeriodRow(label: String, data: com.example.smetracker.data.SalesPeriodData, isBold: Boolean = false) {
+    val netColor = if (data.netProfit >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, fontSize = 14.sp, fontWeight = if (isBold) FontWeight.Bold else FontWeight.Medium)
+            Text(
+                "Net: ${CurrencyUtils.formatUgx(data.netProfit)}",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = netColor
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                "Rev ${CurrencyUtils.formatUgx(data.revenue)}  •  Gross ${CurrencyUtils.formatUgx(data.profit)}  •  Exp ${CurrencyUtils.formatUgx(data.expenses)}",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
         }
     }
 }

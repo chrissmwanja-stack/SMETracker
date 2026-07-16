@@ -75,11 +75,15 @@ fun SalesReportScreen(viewModel: SMEViewModel, navController: NavController) {
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Profit Summary", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                    Text("Profit & Loss", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
                     Spacer(Modifier.height(8.dp))
-                    Text("Today: ${CurrencyUtils.formatUgx(analytics.dailySales.profit)}")
-                    Text("This Week: ${CurrencyUtils.formatUgx(analytics.weeklySales.profit)}")
-                    Text("This Month: ${CurrencyUtils.formatUgx(analytics.monthlySales.profit)}")
+                    ReportRow("Today", "Gross ${CurrencyUtils.formatUgx(analytics.dailySales.profit)} − Exp ${CurrencyUtils.formatUgx(analytics.dailySales.expenses)}", CurrencyUtils.formatUgx(analytics.dailySales.netProfit))
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    ReportRow("This Week", "Gross ${CurrencyUtils.formatUgx(analytics.weeklySales.profit)} − Exp ${CurrencyUtils.formatUgx(analytics.weeklySales.expenses)}", CurrencyUtils.formatUgx(analytics.weeklySales.netProfit))
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    ReportRow("This Month", "Gross ${CurrencyUtils.formatUgx(analytics.monthlySales.profit)} − Exp ${CurrencyUtils.formatUgx(analytics.monthlySales.expenses)}", CurrencyUtils.formatUgx(analytics.monthlySales.netProfit))
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                    ReportRow("All Time", "Gross ${CurrencyUtils.formatUgx(analytics.allTimeSales.profit)} − Exp ${CurrencyUtils.formatUgx(analytics.allTimeSales.expenses)}", CurrencyUtils.formatUgx(analytics.allTimeSales.netProfit), isBold = true)
                 }
             }
         }

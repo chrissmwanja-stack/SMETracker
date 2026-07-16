@@ -33,8 +33,8 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val uiState: StateFlow<DashboardUiState> = combine(
-        sales, customers, debts, inventoryItems
-    ) { sales, customers, debts, inventory ->
+        sales, customers, debts, inventoryItems, expenses
+    ) { sales, customers, debts, inventory, expenseList ->
         DashboardUiState(
             totalRevenue = sales.sumOf { it.amount },
             todayRevenue = sales.filter { it.date >= TimeUtils.getStartOfDay() }.sumOf { it.amount },
@@ -45,7 +45,7 @@ class SMEViewModel(private val repository: SMERepository) : ViewModel() {
             inventoryItems = inventory,
             lowStockItems = inventory.filter { it.quantity > 0 && it.quantity <= it.reorderLevel },
             totalStockValue = inventory.sumOf { it.quantity * it.sellingPrice },
-            analytics = DashboardAnalytics.from(sales, debts, inventory)
+            analytics = DashboardAnalytics.from(sales, debts, inventory, expenseList)
         )
     }
         .flowOn(Dispatchers.Default)

@@ -2,6 +2,7 @@
 package com.example.smetracker.data
 
 import com.example.smetracker.data.entities.Debt
+import com.example.smetracker.data.entities.Expense
 import com.example.smetracker.data.entities.InventoryItem
 import com.example.smetracker.data.entities.PaymentMethod
 import com.example.smetracker.data.entities.Sale
@@ -10,8 +11,13 @@ import com.example.smetracker.utils.TimeUtils
 data class SalesPeriodData(
     val count: Int,
     val revenue: Double,
-    val profit: Double
-)
+    val profit: Double,
+    val expenses: Double = 0.0
+) {
+    // Net profit = gross profit from sales margins, minus operating expenses for the same period.
+    // This is the number that actually tells an owner if they made money, not just gross margin.
+    val netProfit: Double get() = profit - expenses
+}
 
 data class ProductRanking(
     val name: String,
@@ -52,7 +58,8 @@ data class DashboardAnalytics(
         fun from(
             sales: List<Sale>,
             debts: List<Debt>,
-        inventoryItems: List<InventoryItem>
+            inventoryItems: List<InventoryItem>,
+            expenses: List<Expense> = emptyList()
         ): DashboardAnalytics {
             val now = System.currentTimeMillis()
             val startOfDay = TimeUtils.getStartOfDay()
@@ -89,6 +96,26 @@ data class DashboardAnalytics(
                 }
             }
 
+            var dailyExpenses = 0.0
+            var weeklyExpenses = 0.0
+            var monthlyExpenses = 0.0
+
+            expenses.forEach { expense ->
+                val amt = expense.amount
+                when {
+                    expense.date >= startOfDay -> {
+                        dailyExpenses += amt; weeklyExpenses += amt; monthlyExpenses += amt
+                    }
+                    expense.date >= startOfWeek -> {
+                        weeklyExpenses += amt; monthlyExpenses += amt
+                    }
+                    expense.date >= startOfMonth -> {
+                        monthlyExpenses += amt
+                    }
+                }
+            }
+            val allTimeExpenses = expenses.sumOf { it.amount }
+
             val customerMap = mutableMapOf<String, Double>()
             sales.forEach {
                 customerMap[it.customerName] = (customerMap[it.customerName] ?: 0.0) + it.amount
@@ -114,13 +141,14 @@ data class DashboardAnalytics(
             val unpaidDebts = debts.filter { !it.isPaid }
 
             return DashboardAnalytics(
-                dailySales = SalesPeriodData(dailyCount, dailyRevenue, dailyProfit),
-                weeklySales = SalesPeriodData(weeklyCount, weeklyRevenue, weeklyProfit),
-                monthlySales = SalesPeriodData(monthlyCount, monthlyRevenue, monthlyProfit),
+                dailySales = SalesPeriodData(dailyCount, dailyRevenue, dailyProfit, dailyExpenses),
+                weeklySales = SalesPeriodData(weeklyCount, weeklyRevenue, weeklyProfit, weeklyExpenses),
+                monthlySales = SalesPeriodData(monthlyCount, monthlyRevenue, monthlyProfit, monthlyExpenses),
                 allTimeSales = SalesPeriodData(
                     count = sales.size,
                     revenue = sales.sumOf { it.amount },
-                    profit = sales.sumOf { it.profit }
+                    profit = sales.sumOf { it.profit },
+                    expenses = allTimeExpenses
                 ),
                 topCustomers = topCustomers,
                 paidDebts = paidDebts,
