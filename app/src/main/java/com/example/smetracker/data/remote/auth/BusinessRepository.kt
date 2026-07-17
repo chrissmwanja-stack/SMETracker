@@ -1,11 +1,13 @@
 package com.example.smetracker.data.remote.auth
 
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
 
 class BusinessRepository(
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
 
     /**
@@ -121,6 +123,26 @@ class BusinessRepository(
         workerName: String
     ): Result<Unit> {
         return try {
+            // Legitimate pre-check: we can always read our OWN phoneIndex doc
+            // (rules: myPhone() == phone), so use that to tell apart "caller
+            // isn't actually OWNER of this businessId anymore" from "worker
+            // phone already registered" before attempting the write — the
+            // write itself can't distinguish these once denied.
+            val myPhone = auth.currentUser?.phoneNumber
+                ?: return Result.failure(IllegalStateException("Not signed in."))
+
+            val myIndexSnap = firestore.collection("phoneIndex").document(myPhone).get().await()
+            val myBusinessId = myIndexSnap.getString("businessId")
+            val myRole = myIndexSnap.getString("role")
+            if (myRole != "OWNER" || myBusinessId != businessId) {
+                return Result.failure(
+                    IllegalStateException(
+                        "You're no longer the owner of this business (or the app's cached " +
+                                "business ID is stale — try logging out and back in)."
+                    )
+                )
+            }
+
             val memberRef = firestore.collection("businesses").document(businessId)
                 .collection("members").document(workerPhoneE164)
             val phoneIndexRef = firestore.collection("phoneIndex").document(workerPhoneE164)
@@ -146,14 +168,14 @@ class BusinessRepository(
 
             Result.success(Unit)
         } catch (e: Exception) {
-            // Could be: phone already registered (rules deny the phoneIndex
-            // update), caller no longer an owner of this business, or a
-            // genuine network/permissions problem — can't distinguish these
-            // client-side without the read we deliberately don't do above.
+            // Owner-access staleness is now ruled out by the pre-check above,
+            // so a denial reaching here is almost certainly the worker's
+            // phone already being registered elsewhere (rules deny the
+            // phoneIndex create because a doc already exists at that path).
             Result.failure(
                 Exception(
-                    "Could not add worker. This phone number may already be registered " +
-                            "to a business, or you may no longer have owner access.",
+                    "Could not add worker. That phone number is already registered " +
+                            "to a business.",
                     e
                 )
             )
