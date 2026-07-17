@@ -203,6 +203,16 @@ class SMEViewModel(
         quantity: Int = 1
     ) = viewModelScope.launch {
         val soldItem = inventoryItemId?.let { id -> inventoryItems.value.find { it.id == id } }
+        // Defense-in-depth behind AddSaleScreen's own stock check: reject
+        // outright rather than silently clamping or partially applying if
+        // the requested quantity exceeds what's on hand, or if the item id
+        // no longer resolves (e.g. deleted between the screen reading it and
+        // this coroutine running). adjustStock has no floor of its own (see
+        // InventoryDao), so this is the only thing stopping a future caller
+        // that skips screen-level validation from pushing quantity negative.
+        if (inventoryItemId != null && (soldItem == null || quantity > soldItem.quantity)) {
+            return@launch
+        }
         val profit = soldItem?.let { (it.sellingPrice - it.costPrice) * quantity } ?: 0.0
         val (myPhone, isOwner) = currentSession()
         // A custom/service sale (no linked item) has no cost basis to review,

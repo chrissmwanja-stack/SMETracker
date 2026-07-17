@@ -1,10 +1,17 @@
 package com.example.smetracker.ui.auth
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.PointOfSale
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -29,50 +36,131 @@ fun LoginScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        when (val s = state) {
-            is AuthScreenState.EnterPhone -> PhoneEntryContent(
-                onSubmit = { phone ->
-                    activity?.let { viewModel.sendOtp(phone, it) }
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Trust strip only makes sense before anyone's committed to a
+        // number — it's a first-impression cue, not something to repeat
+        // once they're mid-flow verifying a code or hitting an error.
+        AuthHeader(showTrustStrip = state is AuthScreenState.EnterPhone)
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            when (val s = state) {
+                is AuthScreenState.EnterPhone -> PhoneEntryContent(
+                    onSubmit = { phone ->
+                        activity?.let { viewModel.sendOtp(phone, it) }
+                    }
+                )
+
+                is AuthScreenState.Verifying -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(16.dp))
+                    Text("Verifying…")
                 }
-            )
 
-            is AuthScreenState.Verifying -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Spacer(Modifier.height(16.dp))
-                Text("Verifying…")
-            }
+                is AuthScreenState.EnterOtp -> OtpEntryContent(
+                    phoneNumber = s.phoneNumberE164,
+                    verificationId = s.verificationId,
+                    onSubmit = { code ->
+                        viewModel.submitOtpCode(s.verificationId, code, s.phoneNumberE164)
+                    },
+                    onBack = { viewModel.resetToPhoneEntry() },
+                    onResend = { activity?.let { viewModel.resendOtp(it) } }
+                )
 
-            is AuthScreenState.EnterOtp -> OtpEntryContent(
-                phoneNumber = s.phoneNumberE164,
-                verificationId = s.verificationId,
-                onSubmit = { code ->
-                    viewModel.submitOtpCode(s.verificationId, code, s.phoneNumberE164)
-                },
-                onBack = { viewModel.resetToPhoneEntry() },
-                onResend = { activity?.let { viewModel.resendOtp(it) } }
-            )
+                is AuthScreenState.NotRegistered -> NotRegisteredContent(
+                    onCreateBusiness = onCreateBusiness,
+                    onTryDifferentNumber = { viewModel.resetToPhoneEntry() }
+                )
 
-            is AuthScreenState.NotRegistered -> NotRegisteredContent(
-                onCreateBusiness = onCreateBusiness,
-                onTryDifferentNumber = { viewModel.resetToPhoneEntry() }
-            )
-
-            is AuthScreenState.Error -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(s.message, color = MaterialTheme.colorScheme.error)
-                Spacer(Modifier.height(16.dp))
-                Button(onClick = { viewModel.resetToPhoneEntry() }) {
-                    Text("Try again")
+                is AuthScreenState.Error -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(s.message, color = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.height(16.dp))
+                    Button(onClick = { viewModel.resetToPhoneEntry() }) {
+                        Text("Try again")
+                    }
                 }
-            }
 
-            else -> { /* NeedsOwnerSignUp / LoggedIn handled by navigation */ }
+                else -> { /* NeedsOwnerSignUp / LoggedIn handled by navigation */ }
+            }
         }
+    }
+}
+
+// Colored block anchoring the whole auth flow — the one thing the old
+// screen had none of. Rounded-bottom shape so the white content area
+// below reads as a card sitting on top of it, same idea as the
+// Reconciliation dialogs' Surface-on-Dialog layering elsewhere in the app.
+@Composable
+private fun AuthHeader(showTrustStrip: Boolean) {
+    Surface(
+        color = MaterialTheme.colorScheme.primary,
+        shape = RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 48.dp, bottom = 28.dp, start = 24.dp, end = 24.dp)
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.size(56.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        Icons.Default.Storefront,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "SME Tracker",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimary
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Run your shop from your phone",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+            )
+
+            if (showTrustStrip) {
+                Spacer(Modifier.height(20.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    TrustStripItem(Icons.Default.Inventory2, "Stock")
+                    TrustStripItem(Icons.Default.PointOfSale, "Sales")
+                    TrustStripItem(Icons.Default.Group, "Team")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrustStripItem(icon: ImageVector, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
+            modifier = Modifier.size(14.dp)
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+        )
     }
 }
 
@@ -81,7 +169,12 @@ private fun PhoneEntryContent(onSubmit: (String) -> Unit) {
     var phone by remember { mutableStateOf("") }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Welcome to SMETracker", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(
+            "Enter your phone number to sign in",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
         Spacer(Modifier.height(24.dp))
         OutlinedTextField(
             value = phone,
@@ -94,7 +187,8 @@ private fun PhoneEntryContent(onSubmit: (String) -> Unit) {
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = { onSubmit(phone.trim()) },
-            enabled = phone.trim().startsWith("+") && phone.trim().length >= 10
+            enabled = phone.trim().startsWith("+") && phone.trim().length >= 10,
+            modifier = Modifier.fillMaxWidth()
         ) {
             Text("Send code")
         }
@@ -102,7 +196,8 @@ private fun PhoneEntryContent(onSubmit: (String) -> Unit) {
         Text(
             "Enter your number in international format, e.g. +256701234567",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
     }
 }
@@ -142,7 +237,8 @@ private fun OtpEntryContent(
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = { onSubmit(code) },
-            enabled = code.length == 6
+            enabled = code.length == 6,
+            modifier = Modifier.fillMaxWidth()
         ) {
             Text("Verify")
         }
@@ -178,7 +274,7 @@ private fun NotRegisteredContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(24.dp))
-        Button(onClick = onCreateBusiness) {
+        Button(onClick = onCreateBusiness, modifier = Modifier.fillMaxWidth()) {
             Text("Create a business")
         }
         Spacer(Modifier.height(8.dp))

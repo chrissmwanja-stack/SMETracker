@@ -3,16 +3,19 @@ package com.example.smetracker.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
 import com.example.smetracker.data.entities.InventoryItem
 import com.example.smetracker.data.entities.Sale
@@ -24,7 +27,10 @@ import com.example.smetracker.viewmodel.SMEViewModel
 fun ReconciliationScreen(viewModel: SMEViewModel, navController: NavController) {
     val unreconciledSales by viewModel.unreconciledSales.collectAsState()
     val unreconciledItems by viewModel.unreconciledInventoryItems.collectAsState()
-    
+    // Needed so a sale's review dialog can suggest the linked item's current
+    // cost price as a starting point (see SaleReconciliationDialog below).
+    val inventoryItems by viewModel.inventoryItems.collectAsState()
+
     var selectedTab by remember { mutableIntStateOf(0) }
 
     Scaffold(
@@ -48,7 +54,7 @@ fun ReconciliationScreen(viewModel: SMEViewModel, navController: NavController) 
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { 
+                    text = {
                         BadgedBox(badge = { if (unreconciledSales.isNotEmpty()) Badge { Text(unreconciledSales.size.toString()) } }) {
                             Text("Sales")
                         }
@@ -57,7 +63,7 @@ fun ReconciliationScreen(viewModel: SMEViewModel, navController: NavController) 
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { 
+                    text = {
                         BadgedBox(badge = { if (unreconciledItems.isNotEmpty()) Badge { Text(unreconciledItems.size.toString()) } }) {
                             Text("Inventory")
                         }
@@ -73,7 +79,12 @@ fun ReconciliationScreen(viewModel: SMEViewModel, navController: NavController) 
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(unreconciledSales, key = { it.id }) { sale ->
-                            SaleReconciliationItem(sale, onReconcile = { cost -> viewModel.reconcileSale(sale.id, cost) })
+                            val linkedItem = sale.inventoryItemId?.let { id -> inventoryItems.find { it.id == id } }
+                            SaleReconciliationCard(
+                                sale = sale,
+                                linkedItem = linkedItem,
+                                onReconcile = { costPricePerUnit -> viewModel.reconcileSale(sale.id, costPricePerUnit) }
+                            )
                         }
                     }
                 }
@@ -85,7 +96,10 @@ fun ReconciliationScreen(viewModel: SMEViewModel, navController: NavController) 
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(unreconciledItems, key = { it.id }) { item ->
-                            InventoryReconciliationItem(item, onReconcile = { cost -> viewModel.reconcileInventoryCost(item.id, cost) })
+                            InventoryReconciliationCard(
+                                item = item,
+                                onReconcile = { costPrice -> viewModel.reconcileInventoryCost(item.id, costPrice) }
+                            )
                         }
                     }
                 }
@@ -95,9 +109,13 @@ fun ReconciliationScreen(viewModel: SMEViewModel, navController: NavController) 
 }
 
 @Composable
-fun SaleReconciliationItem(sale: Sale, onReconcile: (Double) -> Unit) {
-    var costPrice by remember { mutableStateOf("") }
-    
+private fun SaleReconciliationCard(
+    sale: Sale,
+    linkedItem: InventoryItem?,
+    onReconcile: (Double) -> Unit
+) {
+    var showDialog by remember { mutableStateOf(false) }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(sale.customerName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -108,20 +126,105 @@ fun SaleReconciliationItem(sale: Sale, onReconcile: (Double) -> Unit) {
                 Text("Qty: ${sale.quantity}", fontSize = 14.sp)
             }
             Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { showDialog = true }, modifier = Modifier.align(Alignment.End)) {
+                Text("Review")
+            }
+        }
+    }
+
+    if (showDialog) {
+        SaleReconciliationDialog(
+            sale = sale,
+            linkedItem = linkedItem,
+            onDismiss = { showDialog = false },
+            onConfirm = { costPricePerUnit ->
+                onReconcile(costPricePerUnit)
+                showDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun SaleReconciliationDialog(
+    sale: Sale,
+    linkedItem: InventoryItem?,
+    onDismiss: () -> Unit,
+    onConfirm: (costPricePerUnit: Double) -> Unit
+) {
+    // Suggest the linked item's current cost price as a starting point — the
+    // owner can still override it (e.g. if this particular unit was bought
+    // at a different price), but most of the time it's the right answer and
+    // saves retyping. Only a genuine positive cost counts as a suggestion;
+    // 0.0 means the item's own cost is itself unreconciled, so there's
+    // nothing useful to prefill.
+    var costPriceInput by remember {
+        mutableStateOf(linkedItem?.costPrice?.takeIf { it > 0.0 }?.toString() ?: "")
+    }
+    val costPricePerUnit = costPriceInput.toDoubleOrNull()
+    val projectedProfit = costPricePerUnit?.let { sale.amount - (it * sale.quantity) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Review Sale", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text(sale.customerName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(sale.description, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Sale price: ${CurrencyUtils.formatUgx(sale.amount)}", fontSize = 14.sp)
+                    Text("Qty: ${sale.quantity}", fontSize = 14.sp)
+                }
+
                 OutlinedTextField(
-                    value = costPrice,
-                    onValueChange = { costPrice = it },
+                    value = costPriceInput,
+                    onValueChange = { costPriceInput = it },
                     label = { Text("Cost Price per Unit") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true
+                    supportingText = {
+                        if (linkedItem != null && linkedItem.costPrice > 0.0) {
+                            Text("Suggested from ${linkedItem.name}: ${CurrencyUtils.formatUgx(linkedItem.costPrice)}")
+                        } else if (linkedItem != null) {
+                            Text("${linkedItem.name}'s own cost price hasn't been set yet")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                 )
-                IconButton(
-                    onClick = { costPrice.toDoubleOrNull()?.let { onReconcile(it) } },
-                    enabled = costPrice.isNotBlank(),
-                    colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+
+                // Live projection so the owner can sanity-check the number
+                // before committing — updates on every keystroke.
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Check, contentDescription = "Reconcile")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Projected profit", fontSize = 14.sp)
+                        Text(
+                            text = projectedProfit?.let { CurrencyUtils.formatUgx(it) } ?: "—",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = when {
+                                projectedProfit == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                                projectedProfit < 0 -> MaterialTheme.colorScheme.error
+                                else -> MaterialTheme.colorScheme.primary
+                            }
+                        )
+                    }
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    Button(
+                        onClick = { costPricePerUnit?.let { onConfirm(it) } },
+                        enabled = costPricePerUnit != null
+                    ) { Text("Confirm") }
                 }
             }
         }
@@ -129,8 +232,11 @@ fun SaleReconciliationItem(sale: Sale, onReconcile: (Double) -> Unit) {
 }
 
 @Composable
-fun InventoryReconciliationItem(item: InventoryItem, onReconcile: (Double) -> Unit) {
-    var costPrice by remember { mutableStateOf("") }
+private fun InventoryReconciliationCard(
+    item: InventoryItem,
+    onReconcile: (Double) -> Unit
+) {
+    var showDialog by remember { mutableStateOf(false) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -141,20 +247,87 @@ fun InventoryReconciliationItem(item: InventoryItem, onReconcile: (Double) -> Un
             Spacer(Modifier.height(8.dp))
             Text("Selling Price: ${CurrencyUtils.formatUgx(item.sellingPrice)}", fontSize = 14.sp)
             Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { showDialog = true }, modifier = Modifier.align(Alignment.End)) {
+                Text("Set Cost")
+            }
+        }
+    }
+
+    if (showDialog) {
+        InventoryReconciliationDialog(
+            item = item,
+            onDismiss = { showDialog = false },
+            onConfirm = { costPrice ->
+                onReconcile(costPrice)
+                showDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun InventoryReconciliationDialog(
+    item: InventoryItem,
+    onDismiss: () -> Unit,
+    onConfirm: (costPrice: Double) -> Unit
+) {
+    // No prefill here — unlike a sale, there's no "last known good" cost to
+    // suggest for a brand-new item; a worker-created item's costPrice is
+    // always the unset 0.0 default (see SMEViewModel.upsertInventoryItem).
+    var costPriceInput by remember { mutableStateOf("") }
+    val costPrice = costPriceInput.toDoubleOrNull()
+    val projectedMargin = costPrice?.let { item.sellingPrice - it }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Set Cost Price", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text(item.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                if (item.category.isNotBlank()) {
+                    Text(item.category, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                }
+                Text("Selling Price: ${CurrencyUtils.formatUgx(item.sellingPrice)}", fontSize = 14.sp)
+
                 OutlinedTextField(
-                    value = costPrice,
-                    onValueChange = { costPrice = it },
+                    value = costPriceInput,
+                    onValueChange = { costPriceInput = it },
                     label = { Text("Cost Price") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                 )
-                IconButton(
-                    onClick = { costPrice.toDoubleOrNull()?.let { onReconcile(it) } },
-                    enabled = costPrice.isNotBlank(),
-                    colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.Check, contentDescription = "Reconcile")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Margin per unit", fontSize = 14.sp)
+                        Text(
+                            text = projectedMargin?.let { CurrencyUtils.formatUgx(it) } ?: "—",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = when {
+                                projectedMargin == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                                projectedMargin < 0 -> MaterialTheme.colorScheme.error
+                                else -> MaterialTheme.colorScheme.primary
+                            }
+                        )
+                    }
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    Button(
+                        onClick = { costPrice?.let { onConfirm(it) } },
+                        enabled = costPrice != null
+                    ) { Text("Confirm") }
                 }
             }
         }
