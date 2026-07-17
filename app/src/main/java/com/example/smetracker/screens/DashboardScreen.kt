@@ -58,12 +58,14 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { navController.navigate(Screen.Reports.route) }) {
-                        Icon(
-                            Icons.Default.Assessment,
-                            contentDescription = "Reports",
-                            tint = MaterialTheme.colorScheme.onPrimary
-                        )
+                    if (isOwner) {
+                        IconButton(onClick = { navController.navigate(Screen.Reports.route) }) {
+                            Icon(
+                                Icons.Default.Assessment,
+                                contentDescription = "Reports",
+                                tint = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
                     }
                     if (isOwner) {
                         IconButton(onClick = onAddWorker) {
@@ -125,7 +127,9 @@ fun DashboardScreen(
                 )
             }
 
-            item { ReportsSection(isTablet = isTablet, uiState = uiState, isOwner = isOwner, onViewInventory = { navController.navigate(Screen.Inventory.route) }) }
+            if (isOwner) {
+                item { ReportsSection(isTablet = isTablet, uiState = uiState, onViewInventory = { navController.navigate(Screen.Inventory.route) }) }
+            }
             item { Text("Recent Sales", fontWeight = FontWeight.SemiBold, fontSize = if (isTablet) 18.sp else 16.sp) }
             if (uiState.recentSales.isEmpty()) {
                 item { EmptyStateCard("No sales recorded yet") }
@@ -319,16 +323,17 @@ private fun ExpensesTasksSection(totalExpenses: Double, pendingTaskCount: Int, o
 }
 
 @Composable
-private fun ReportsSection(isTablet: Boolean, uiState: DashboardUiState, isOwner: Boolean, onViewInventory: () -> Unit) {
+private fun ReportsSection(isTablet: Boolean, uiState: DashboardUiState, onViewInventory: () -> Unit) {
     Column {
         SectionTitle("Reports", isTablet)
         Spacer(Modifier.height(8.dp))
         if (isTablet) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    // Profit & Loss is derived from costPrice/profit — owner-only
-                    // data. A worker's local copy is always 0 (see SummarySection).
-                    if (isOwner) { ProfitReportCard(uiState.analytics) }
+                    // This whole section is owner-only now — see the isOwner gate
+                    // at its call site — so ProfitReportCard's costPrice/profit
+                    // data (owner-only per the rules) is safe to show unconditionally.
+                    ProfitReportCard(uiState.analytics)
                     SalesReportCard(uiState.analytics)
                     TopCustomersCard(uiState.analytics.topCustomers)
                 }
@@ -348,7 +353,7 @@ private fun ReportsSection(isTablet: Boolean, uiState: DashboardUiState, isOwner
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (uiState.lowStockItems.isNotEmpty()) { LowStockBanner(uiState.lowStockItems, onViewInventory) }
-                if (isOwner) { ProfitReportCard(uiState.analytics) }
+                ProfitReportCard(uiState.analytics)
                 SalesReportCard(uiState.analytics)
                 InventoryReportCard(
                     totalItems = uiState.inventoryItems.size,

@@ -30,6 +30,7 @@ import com.example.smetracker.repository.SMERepository
 import com.example.smetracker.screens.*
 import com.example.smetracker.ui.auth.AuthNavGate
 import com.example.smetracker.ui.auth.AuthViewModelFactory
+import com.example.smetracker.ui.components.OwnerOnlyGate
 import com.example.smetracker.ui.theme.SMETrackerTheme
 import com.example.smetracker.viewmodel.SMEViewModel
 import com.example.smetracker.viewmodel.SMEViewModelFactory
@@ -110,12 +111,36 @@ class MainActivity : ComponentActivity() {
                             composable(Screen.AddInventory.route) { AddInventoryScreen(viewModel = viewModel, navController = navController, isOwner = currentEntry.second == MemberRole.OWNER) }
                             composable(Screen.Customers.route) { CustomersScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.Inventory.route) { InventoryScreen(viewModel = viewModel, navController = navController, isOwner = currentEntry.second == MemberRole.OWNER) }
-                            composable(Screen.Reports.route) { ReportsScreen(navController = navController) }
-                            composable(Screen.SalesReport.route) { SalesReportScreen(viewModel = viewModel, navController = navController, isOwner = currentEntry.second == MemberRole.OWNER) }
-                            composable(Screen.DebtReport.route) { DebtReportScreen(viewModel = viewModel, navController = navController) }
-                            composable(Screen.InventoryReport.route) { InventoryReportScreen(viewModel = viewModel, navController = navController) }
-                            composable(Screen.TopCustomers.route) { TopCustomersScreen(viewModel = viewModel, navController = navController) }
-                            composable(Screen.PaymentBreakdown.route) { PaymentBreakdownScreen(viewModel = viewModel, navController = navController) }
+                            composable(Screen.Reports.route) {
+                                OwnerOnlyGate(isOwner = currentEntry.second == MemberRole.OWNER, navController = navController) {
+                                    ReportsScreen(navController = navController)
+                                }
+                            }
+                            composable(Screen.SalesReport.route) {
+                                OwnerOnlyGate(isOwner = currentEntry.second == MemberRole.OWNER, navController = navController) {
+                                    SalesReportScreen(viewModel = viewModel, navController = navController, isOwner = currentEntry.second == MemberRole.OWNER)
+                                }
+                            }
+                            composable(Screen.DebtReport.route) {
+                                OwnerOnlyGate(isOwner = currentEntry.second == MemberRole.OWNER, navController = navController) {
+                                    DebtReportScreen(viewModel = viewModel, navController = navController)
+                                }
+                            }
+                            composable(Screen.InventoryReport.route) {
+                                OwnerOnlyGate(isOwner = currentEntry.second == MemberRole.OWNER, navController = navController) {
+                                    InventoryReportScreen(viewModel = viewModel, navController = navController)
+                                }
+                            }
+                            composable(Screen.TopCustomers.route) {
+                                OwnerOnlyGate(isOwner = currentEntry.second == MemberRole.OWNER, navController = navController) {
+                                    TopCustomersScreen(viewModel = viewModel, navController = navController)
+                                }
+                            }
+                            composable(Screen.PaymentBreakdown.route) {
+                                OwnerOnlyGate(isOwner = currentEntry.second == MemberRole.OWNER, navController = navController) {
+                                    PaymentBreakdownScreen(viewModel = viewModel, navController = navController)
+                                }
+                            }
                             composable(Screen.Expenses.route) { ExpensesScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.Tasks.route) { TasksScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.AddWorker.route) {
