@@ -8,6 +8,7 @@ import com.example.smetracker.data.entities.Expense
 import com.example.smetracker.data.entities.InventoryItem
 import com.example.smetracker.data.entities.PaymentMethod
 import com.example.smetracker.data.entities.Sale
+import com.example.smetracker.data.entities.Task
 import com.example.smetracker.data.remote.auth.MemberRole
 import com.example.smetracker.data.remote.auth.SessionManager
 import com.example.smetracker.data.remote.model.ExpenseStatus
@@ -17,6 +18,7 @@ import com.example.smetracker.data.remote.model.RemoteDebt
 import com.example.smetracker.data.remote.model.RemoteExpense
 import com.example.smetracker.data.remote.model.RemoteInventoryItem
 import com.example.smetracker.data.remote.model.RemoteSale
+import com.example.smetracker.data.remote.model.RemoteTask
 import com.example.smetracker.data.remote.model.SaleFinancials
 import com.google.firebase.firestore.DocumentChange
 import com.google.firebase.firestore.DocumentReference
@@ -32,7 +34,7 @@ import kotlinx.coroutines.tasks.await
 
 /**
  * Syncs Customer, Sale (+ SaleFinancials), Debt, InventoryItem (+ InventoryCost),
- * and Expense between Room and Firestore, in both directions. Extends the
+ * Expense, and Task between Room and Firestore, in both directions. Extends the
  * original Phase 3 Customer-only proof to every entity, following the same
  * read/write pattern throughout:
  *
@@ -126,6 +128,7 @@ class SyncEngine(
         activeListeners += attachDebtListener(businessRef)
         activeListeners += attachInventoryListener(businessRef)
         activeListeners += attachExpenseListener(businessRef, role, myPhone)
+        activeListeners += attachTaskListener(businessRef)
 
         // Owner-only collections — a worker's device never attaches these at
         // all, matching what the security rules already deny them.
@@ -150,6 +153,7 @@ class SyncEngine(
         pushPendingDebts(businessId, myPhone)
         pushPendingInventoryItems(businessId, role)
         pushPendingExpenses(businessId, myPhone, role)
+        pushPendingTasks(businessId)
     }
 
     // ───────────────────────── Customers ─────────────────────────
@@ -513,6 +517,61 @@ class SyncEngine(
                     ).await()
 
                 smeDao.clearExpensePendingSync(expense.id)
+            } catch (e: Exception) {
+                // Left as pendingSync = true — picked up again on the next requestPush().
+            }
+        }
+    }
+
+    // ───────────────────────── Tasks ─────────────────────────
+    // No worker/owner split — shared task list, same as Customer.
+
+    private fun attachTaskListener(businessRef: DocumentReference): ListenerRegistration {
+        return businessRef.collection("tasks")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+                externalScope.launch {
+                    for (change in snapshot.documentChanges) {
+                        if (change.type == DocumentChange.Type.REMOVED) continue
+                        val remote = change.document.toObject(RemoteTask::class.java)
+                        smeDao.insertTask(
+                            Task(
+                                id = remote.id,
+                                title = remote.title,
+                                description = remote.description,
+                                priority = remote.priority,
+                                dueDate = remote.dueDate,
+                                isCompleted = remote.isCompleted,
+                                completedDate = remote.completedDate,
+                                createdDate = remote.createdDate,
+                                pendingSync = false
+                            )
+                        )
+                    }
+                }
+            }
+    }
+
+    private suspend fun pushPendingTasks(businessId: String) {
+        val businessRef = firestore.collection("businesses").document(businessId)
+        val pending = smeDao.getPendingSyncTasks()
+        for (task in pending) {
+            try {
+                businessRef.collection("tasks").document(task.id)
+                    .set(
+                        RemoteTask(
+                            id = task.id,
+                            title = task.title,
+                            description = task.description,
+                            priority = task.priority,
+                            dueDate = task.dueDate,
+                            isCompleted = task.isCompleted,
+                            completedDate = task.completedDate,
+                            createdDate = task.createdDate
+                        )
+                    ).await()
+
+                smeDao.clearTaskPendingSync(task.id)
             } catch (e: Exception) {
                 // Left as pendingSync = true — picked up again on the next requestPush().
             }

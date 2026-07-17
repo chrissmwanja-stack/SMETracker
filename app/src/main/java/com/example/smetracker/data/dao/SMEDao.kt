@@ -124,4 +124,11 @@ interface SMEDao {
 
     @Delete
     suspend fun deleteTask(task: Task)
+
+    // ── Sync (Task) ──────────────────────────────────────────────
+    @Query("SELECT * FROM tasks WHERE pendingSync = 1")
+    suspend fun getPendingSyncTasks(): List<Task>
+
+    @Query("UPDATE tasks SET pendingSync = 0 WHERE id = :taskId")
+    suspend fun clearTaskPendingSync(taskId: String)
 }
