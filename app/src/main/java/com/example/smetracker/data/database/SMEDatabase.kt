@@ -16,11 +16,12 @@ import com.example.smetracker.data.entities.Debt
 import com.example.smetracker.data.entities.Expense
 import com.example.smetracker.data.entities.InventoryItem
 import com.example.smetracker.data.entities.Sale
+import com.example.smetracker.data.entities.StockAdjustment
 import com.example.smetracker.data.entities.Task
 
 @Database(
-    entities = [Sale::class, Customer::class, Debt::class, InventoryItem::class, Expense::class, Task::class],
-    version = 8,
+    entities = [Sale::class, Customer::class, Debt::class, InventoryItem::class, Expense::class, Task::class, StockAdjustment::class],
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -60,6 +61,11 @@ abstract class SMEDatabase : RoomDatabase() {
         // the local Room database on version bump. Fine for now since this is still
         // pre-launch, but write a real Migration instead once there's user data
         // worth preserving across an app update.
+
+        // v8 -> v9: added the stock_adjustments table (see StockAdjustment.kt) —
+        // the audit log behind Incoming Stock / Recount. Same pre-launch
+        // fallbackToDestructiveMigration as v6->v7 and v7->v8 above; write a
+        // real Migration instead once there's real user data to preserve.
 
         fun getDatabase(context: Context): SMEDatabase {
             return INSTANCE ?: synchronized(this) {

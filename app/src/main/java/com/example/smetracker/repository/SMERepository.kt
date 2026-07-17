@@ -54,6 +54,45 @@ class SMERepository(
     suspend fun deleteInventoryItem(item: InventoryItem) = inventoryDao.delete(item)
     suspend fun adjustStock(itemId: String, amount: Int) = inventoryDao.adjustStock(itemId, amount, System.currentTimeMillis())
 
+    fun getAdjustmentsForItem(itemId: String) = inventoryDao.getAdjustmentsForItem(itemId)
+
+    suspend fun receiveStock(itemId: String, quantity: Int, note: String? = null) {
+        inventoryDao.applyStockAdjustment(
+            StockAdjustment(
+                itemId = itemId,
+                delta = quantity,
+                reason = StockAdjustmentReason.INCOMING,
+                note = note
+            )
+        )
+    }
+
+    suspend fun recountStock(itemId: String, newQuantity: Int, note: String) {
+        val currentItem = inventoryDao.getItemById(itemId) ?: return
+        val delta = newQuantity - currentItem.quantity
+        if (delta == 0) return
+
+        inventoryDao.applyStockAdjustment(
+            StockAdjustment(
+                itemId = itemId,
+                delta = delta,
+                reason = StockAdjustmentReason.RECOUNT,
+                note = note
+            )
+        )
+    }
+
+    suspend fun recordSaleStockAdjustment(itemId: String, quantity: Int) {
+        inventoryDao.applyStockAdjustment(
+            StockAdjustment(
+                itemId = itemId,
+                delta = -quantity,
+                reason = StockAdjustmentReason.SALE,
+                note = "Sale"
+            )
+        )
+    }
+
     // ── Expenses ─────────────────────────────────────────────────
     fun getAllExpenses(): Flow<List<Expense>> = smeDao.getAllExpenses()
     fun getTotalExpenses(): Flow<Double?> = smeDao.getTotalExpenses()

@@ -8,6 +8,8 @@ import com.example.smetracker.data.entities.Expense
 import com.example.smetracker.data.entities.InventoryItem
 import com.example.smetracker.data.entities.PaymentMethod
 import com.example.smetracker.data.entities.Sale
+import com.example.smetracker.data.entities.StockAdjustment
+import com.example.smetracker.data.entities.StockAdjustmentReason
 import com.example.smetracker.data.entities.Task
 import com.example.smetracker.data.remote.auth.MemberRole
 import com.example.smetracker.data.remote.auth.SessionManager
@@ -18,6 +20,7 @@ import com.example.smetracker.data.remote.model.RemoteDebt
 import com.example.smetracker.data.remote.model.RemoteExpense
 import com.example.smetracker.data.remote.model.RemoteInventoryItem
 import com.example.smetracker.data.remote.model.RemoteSale
+import com.example.smetracker.data.remote.model.RemoteStockAdjustment
 import com.example.smetracker.data.remote.model.RemoteTask
 import com.example.smetracker.data.remote.model.SaleFinancials
 import com.google.firebase.firestore.DocumentChange
@@ -127,6 +130,7 @@ class SyncEngine(
         activeListeners += attachSaleListener(businessRef)
         activeListeners += attachDebtListener(businessRef)
         activeListeners += attachInventoryListener(businessRef)
+        activeListeners += attachStockAdjustmentListener(businessRef)
         activeListeners += attachExpenseListener(businessRef, role, myPhone)
         activeListeners += attachTaskListener(businessRef)
 
@@ -152,6 +156,7 @@ class SyncEngine(
         pushPendingSales(businessId, myPhone, role)
         pushPendingDebts(businessId, myPhone)
         pushPendingInventoryItems(businessId, role)
+        pushPendingStockAdjustments(businessId, myPhone)
         pushPendingExpenses(businessId, myPhone, role)
         pushPendingTasks(businessId)
     }
@@ -427,6 +432,67 @@ class SyncEngine(
                 }
 
                 inventoryDao.clearItemPendingSync(item.id)
+            } catch (e: Exception) {
+                // Left as pendingSync = true — picked up again on the next requestPush().
+            }
+        }
+    }
+
+    // ───────────────────────── Stock Adjustments ─────────────────────────
+    // No worker/owner split on read — see RemoteStockAdjustment.kt's class doc.
+    // This is the audit log behind Incoming Stock / Recount (InventoryScreen).
+
+    // Same FK-ordering caveat as Sale/Customer elsewhere in this file:
+    // StockAdjustment.itemId is a foreign key to inventory_items, so if this
+    // listener's first batch arrives before the inventory listener's does (no
+    // ordering guarantee between two independent snapshot listeners), the
+    // insert throws and that adjustment is silently dropped rather than
+    // retried — not new here, just carried over from an existing gap.
+    private fun attachStockAdjustmentListener(businessRef: DocumentReference): ListenerRegistration {
+        return businessRef.collection("stockAdjustments")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null || snapshot == null) return@addSnapshotListener
+                externalScope.launch {
+                    for (change in snapshot.documentChanges) {
+                        if (change.type == DocumentChange.Type.REMOVED) continue
+                        val remote = change.document.toObject(RemoteStockAdjustment::class.java)
+                        inventoryDao.insertAdjustmentFromRemote(
+                            StockAdjustment(
+                                id = remote.id,
+                                itemId = remote.itemId,
+                                delta = remote.delta,
+                                reason = runCatching { StockAdjustmentReason.valueOf(remote.reason) }
+                                    .getOrDefault(StockAdjustmentReason.INCOMING),
+                                note = remote.note,
+                                createdAt = remote.createdAt,
+                                recordedBy = remote.recordedBy,
+                                pendingSync = false
+                            )
+                        )
+                    }
+                }
+            }
+    }
+
+    private suspend fun pushPendingStockAdjustments(businessId: String, myPhone: String) {
+        val businessRef = firestore.collection("businesses").document(businessId)
+        val pending = inventoryDao.getPendingSyncAdjustments()
+        for (adjustment in pending) {
+            try {
+                businessRef.collection("stockAdjustments").document(adjustment.id)
+                    .set(
+                        RemoteStockAdjustment(
+                            id = adjustment.id,
+                            itemId = adjustment.itemId,
+                            delta = adjustment.delta,
+                            reason = adjustment.reason.name,
+                            note = adjustment.note,
+                            createdAt = adjustment.createdAt,
+                            recordedBy = myPhone
+                        )
+                    ).await()
+
+                inventoryDao.clearAdjustmentPendingSync(adjustment.id)
             } catch (e: Exception) {
                 // Left as pendingSync = true — picked up again on the next requestPush().
             }

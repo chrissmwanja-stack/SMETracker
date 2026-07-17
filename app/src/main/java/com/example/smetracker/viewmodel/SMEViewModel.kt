@@ -133,8 +133,19 @@ class SMEViewModel(
         repository.deleteInventoryItem(item)
     }
 
-    fun adjustStock(itemId: String, amount: Int) = viewModelScope.launch {
-        repository.adjustStock(itemId, amount)
+    fun getAdjustmentsForItem(itemId: String) = repository.getAdjustmentsForItem(itemId)
+
+    // Incoming Stock — additive-only, available to workers and owners alike.
+    fun receiveStock(itemId: String, quantity: Int, note: String? = null) = viewModelScope.launch {
+        repository.receiveStock(itemId, quantity, note)
+        syncEngine?.requestPush()
+    }
+
+    // Recount — owner-only correction after a physical count. The screen is
+    // responsible for only exposing this to an owner and for requiring a note;
+    // this function trusts its caller on both, same as the rest of this class.
+    fun recountStock(itemId: String, newQuantity: Int, note: String) = viewModelScope.launch {
+        repository.recountStock(itemId, newQuantity, note)
         syncEngine?.requestPush()
     }
 
@@ -166,7 +177,7 @@ class SMEViewModel(
         )
 
         if (soldItem != null) {
-            repository.adjustStock(soldItem.id, -quantity)
+            repository.recordSaleStockAdjustment(soldItem.id, quantity)
         }
         syncEngine?.requestPush()
     }

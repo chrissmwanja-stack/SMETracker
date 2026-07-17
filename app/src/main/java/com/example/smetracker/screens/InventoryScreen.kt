@@ -84,11 +84,14 @@ fun InventoryScreen(viewModel: SMEViewModel, navController: NavController, isOwn
                     InventoryListItem(
                         item = item,
                         ugx = ugx,
+                        isOwner = isOwner,
                         onEdit = {
                             selectedItem = item
                             showDialog = true
                         },
-                        onDelete = { viewModel.deleteInventoryItem(item) }
+                        onDelete = { viewModel.deleteInventoryItem(item) },
+                        onReceiveStock = { qty, note -> viewModel.receiveStock(item.id, qty, note) },
+                        onRecount = { newQty, note -> viewModel.recountStock(item.id, newQty, note) }
                     )
                 }
                 item { Spacer(Modifier.height(80.dp)) }
@@ -113,35 +116,60 @@ fun InventoryScreen(viewModel: SMEViewModel, navController: NavController, isOwn
 private fun InventoryListItem(
     item: InventoryItem,
     ugx: NumberFormat,
+    isOwner: Boolean,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onReceiveStock: (quantity: Int, note: String?) -> Unit,
+    onRecount: (newQuantity: Int, note: String) -> Unit
 ) {
     var showConfirmDelete by remember { mutableStateOf(false) }
+    var showReceiveDialog by remember { mutableStateOf(false) }
+    var showRecountDialog by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(1.dp)
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(item.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text(item.category, fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.Gray)
-                Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Qty: ${item.quantity}", fontSize = 14.sp,
-                        color = if (item.quantity <= item.reorderLevel) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
-                    Text("Price: UGX ${ugx.format(item.sellingPrice.toLong())}", fontSize = 14.sp)
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(item.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(item.category, fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.Gray)
+                    Spacer(Modifier.height(4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Qty: ${item.quantity}", fontSize = 14.sp,
+                            color = if (item.quantity <= item.reorderLevel) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                        Text("Price: UGX ${ugx.format(item.sellingPrice.toLong())}", fontSize = 14.sp)
+                    }
+                }
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                }
+                IconButton(onClick = { showConfirmDelete = true }) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                 }
             }
-            IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
-            }
-            IconButton(onClick = { showConfirmDelete = true }) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+            // Quantity no longer changes through Edit — see InventoryItemDialog.
+            // These are the only two paths that can move it: Incoming Stock
+            // (additive, anyone) and Recount (either direction, owner-only,
+            // requires a reason). Both are logged via StockAdjustment.
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(onClick = { showReceiveDialog = true }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Incoming Stock", fontSize = 13.sp)
+                }
+                if (isOwner) {
+                    OutlinedButton(onClick = { showRecountDialog = true }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.FactCheck, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Recount", fontSize = 13.sp)
+                    }
+                }
             }
         }
     }
@@ -161,6 +189,120 @@ private fun InventoryListItem(
             }
         )
     }
+
+    if (showReceiveDialog) {
+        ReceiveStockDialog(
+            itemName = item.name,
+            onDismiss = { showReceiveDialog = false },
+            onConfirm = { qty, note ->
+                onReceiveStock(qty, note)
+                showReceiveDialog = false
+            }
+        )
+    }
+
+    if (showRecountDialog) {
+        RecountStockDialog(
+            itemName = item.name,
+            currentQuantity = item.quantity,
+            onDismiss = { showRecountDialog = false },
+            onConfirm = { newQty, note ->
+                onRecount(newQty, note)
+                showRecountDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun ReceiveStockDialog(
+    itemName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (quantity: Int, note: String?) -> Unit
+) {
+    var quantity by remember { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+    val qtyValue = quantity.toIntOrNull()
+    val isValid = qtyValue != null && qtyValue > 0
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Incoming Stock — $itemName") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("How many units arrived?", fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.Gray)
+                OutlinedTextField(
+                    value = quantity,
+                    onValueChange = { quantity = it },
+                    label = { Text("Quantity received") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("Note (optional)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = isValid,
+                onClick = { onConfirm(qtyValue!!, note.ifBlank { null }) }
+            ) { Text("Add to Stock") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+@Composable
+private fun RecountStockDialog(
+    itemName: String,
+    currentQuantity: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (newQuantity: Int, note: String) -> Unit
+) {
+    var newQuantity by remember { mutableStateOf(currentQuantity.toString()) }
+    var note by remember { mutableStateOf("") }
+    val newQtyValue = newQuantity.toIntOrNull()
+    // A reason is required so a recount always leaves a trail explaining the
+    // discrepancy, rather than a bare number with no context.
+    val isValid = newQtyValue != null && newQtyValue >= 0 && note.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Recount — $itemName") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Currently on record: $currentQuantity", fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.Gray)
+                OutlinedTextField(
+                    value = newQuantity,
+                    onValueChange = { newQuantity = it },
+                    label = { Text("Actual physical count") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("Reason for discrepancy") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = isValid,
+                onClick = { onConfirm(newQtyValue!!, note) }
+            ) { Text("Save Recount") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable
@@ -172,6 +314,13 @@ private fun InventoryItemDialog(
 ) {
     var name by remember { mutableStateOf(item?.name ?: "") }
     var category by remember { mutableStateOf(item?.category ?: "") }
+    // Quantity is only a free-typed field when creating a brand-new item (no
+    // sale history to protect yet). Editing an EXISTING item never lets
+    // anyone — owner or worker — type a new quantity here: that was the
+    // loophole (edit dialog → decrement to match a pocketed cash sale, no
+    // record left behind). Existing items now change quantity only through
+    // Incoming Stock or Recount, both logged. See StockAdjustment.kt.
+    val isNewItem = item == null
     var quantity by remember { mutableStateOf(item?.quantity?.toString() ?: "0") }
     var reorderLevel by remember { mutableStateOf(item?.reorderLevel?.toString() ?: "5") }
     var costPrice by remember { mutableStateOf(item?.costPrice?.toString() ?: "0") }
@@ -180,11 +329,22 @@ private fun InventoryItemDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(if (item == null) "Add Item" else "Edit Item", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text(if (isNewItem) "Add Item" else "Edit Item", fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Item Name") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = category, onValueChange = { category = it }, label = { Text("Category") }, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = quantity, onValueChange = { quantity = it }, label = { Text("Qty") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    if (isNewItem) {
+                        OutlinedTextField(value = quantity, onValueChange = { quantity = it }, label = { Text("Initial Qty") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    } else {
+                        OutlinedTextField(
+                            value = quantity,
+                            onValueChange = {},
+                            readOnly = true,
+                            enabled = false,
+                            label = { Text("Qty (use Incoming Stock / Recount)") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                     OutlinedTextField(value = reorderLevel, onValueChange = { reorderLevel = it }, label = { Text("Reorder") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 }
                 // Cost is owner-only (see AddInventoryScreen's comment on the
