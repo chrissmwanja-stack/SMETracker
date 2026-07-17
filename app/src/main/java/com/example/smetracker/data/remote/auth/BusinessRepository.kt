@@ -66,7 +66,10 @@ class BusinessRepository(
                 phoneIndexRef.set(
                     mapOf(
                         "businessId" to businessId,
-                        "role" to "owner"
+                        // Must be uppercase — firestore.rules' phoneIndex Case 1
+                        // create rule checks request.resource.data.role == 'OWNER'
+                        // as an exact string match.
+                        "role" to "OWNER"
                     )
                 ).await()
             } catch (e: Exception) {
@@ -79,7 +82,11 @@ class BusinessRepository(
             try {
                 memberRef.set(
                     mapOf(
-                        "role" to "owner",
+                        // Uppercase for consistency with phoneIndex's role
+                        // vocabulary ('OWNER'/'WORKER'), even though this
+                        // particular field isn't value-checked by the members
+                        // create rule today.
+                        "role" to "OWNER",
                         "name" to ownerName,
                         "addedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                     )
@@ -116,14 +123,17 @@ class BusinessRepository(
                 }
 
                 txn.set(memberRef, mapOf(
-                    "role" to "worker",
+                    "role" to "WORKER",
                     "name" to workerName,
                     "addedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                 ))
 
+                // Must be uppercase — firestore.rules' phoneIndex Case 2
+                // create rule checks request.resource.data.role == 'WORKER'
+                // as an exact string match.
                 txn.set(phoneIndexRef, mapOf(
                     "businessId" to businessId,
-                    "role" to "worker"
+                    "role" to "WORKER"
                 ))
             }.await()
 

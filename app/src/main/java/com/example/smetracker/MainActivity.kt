@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
     // start() is safe to call multiple times (no-ops if already listening) and
     // internally waits for sessionManager.sessionState to report a business
     // before attaching anything, so it's fine to construct this eagerly.
-    private val syncEngine by lazy { SyncEngine(database.smeDao(), sessionManager, lifecycleScope) }
+    private val syncEngine by lazy { SyncEngine(database.smeDao(), database.inventoryDao(), sessionManager, lifecycleScope) }
 
     private val viewModelFactory by lazy {
         SMEViewModelFactory(SMERepository(database.smeDao(), database.inventoryDao()), syncEngine)
