@@ -16,9 +16,11 @@ import kotlinx.coroutines.launch
 
 class SMEViewModel(
     private val repository: SMERepository,
-    // Nullable for now — only Customer syncs in this Phase 3 proof, and tests /
-    // previews that don't need sync can keep constructing this ViewModel with
-    // just a repository.
+    // Nullable so tests/previews that don't need sync can keep constructing
+    // this ViewModel with just a repository. Every mutation below calls
+    // syncEngine?.requestPush() after its local write — deletions are the
+    // one exception, since SyncEngine doesn't sync deletes in either
+    // direction yet (a known limitation, not an oversight here).
     private val syncEngine: SyncEngine? = null
 ) : ViewModel() {
 
@@ -92,10 +94,12 @@ class SMEViewModel(
     // Debt Actions
     fun insertDebt(debt: Debt) = viewModelScope.launch {
         repository.insertDebt(debt)
+        syncEngine?.requestPush()
     }
 
     fun markDebtAsPaid(debtId: String) = viewModelScope.launch {
         repository.markDebtPaid(debtId)
+        syncEngine?.requestPush()
     }
 
     // Inventory Actions
@@ -108,6 +112,7 @@ class SMEViewModel(
         } else {
             repository.updateInventoryItem(item)
         }
+        syncEngine?.requestPush()
     }
 
     fun addInventoryItem(name: String, quantity: Int, sellingPrice: Double, category: String = "", costPrice: Double = 0.0, reorderLevel: Int = 5) = viewModelScope.launch {
@@ -121,6 +126,7 @@ class SMEViewModel(
                 reorderLevel = reorderLevel
             )
         )
+        syncEngine?.requestPush()
     }
 
     fun deleteInventoryItem(item: InventoryItem) = viewModelScope.launch {
@@ -129,6 +135,7 @@ class SMEViewModel(
 
     fun adjustStock(itemId: String, amount: Int) = viewModelScope.launch {
         repository.adjustStock(itemId, amount)
+        syncEngine?.requestPush()
     }
 
     // Sale Actions
@@ -161,6 +168,7 @@ class SMEViewModel(
         if (soldItem != null) {
             repository.adjustStock(soldItem.id, -quantity)
         }
+        syncEngine?.requestPush()
     }
 
     fun deleteSale(sale: Sale) = viewModelScope.launch {
@@ -177,6 +185,7 @@ class SMEViewModel(
                 receiptNumber = receiptNumber
             )
         )
+        syncEngine?.requestPush()
     }
 
     fun deleteExpense(expense: Expense) = viewModelScope.launch {
@@ -193,10 +202,12 @@ class SMEViewModel(
                 dueDate = dueDate
             )
         )
+        syncEngine?.requestPush()
     }
 
     fun completeTask(taskId: String) = viewModelScope.launch {
         repository.completeTask(taskId)
+        syncEngine?.requestPush()
     }
 
     fun deleteTask(task: Task) = viewModelScope.launch {
