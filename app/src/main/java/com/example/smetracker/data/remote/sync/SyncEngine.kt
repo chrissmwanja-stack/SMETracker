@@ -27,8 +27,12 @@ import com.google.firebase.firestore.DocumentChange
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import android.content.Context
+import com.example.smetracker.notifications.ReconciliationNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -57,8 +61,10 @@ import kotlinx.coroutines.tasks.await
  * - saleFinancials and inventoryCosts are owner-write-only. A worker's push
  *   never attempts those writes (they'd always be denied); the financials
  *   half of a worker-recorded sale or inventory item simply doesn't exist in
- *   Firestore until an owner reconciles it. Nothing currently does that
- *   reconciliation — it's a real gap, not yet built.
+ *   Firestore until an owner reconciles it via the Reconciliation screen
+ *   (SMEViewModel.reconcileSale/reconcileInventoryCost). Sale.
+ *   financialsReconciled / InventoryItem.costReconciled track whether that's
+ *   happened yet — see SMEDatabase's v9->v10 migration.
  * - Pulling RemoteSale/RemoteInventoryItem never touches the locally-merged
  *   cost/profit columns (updateSaleFinancials/updateItemCostPrice do that
  *   separately), so the two listeners for a given entity can arrive in
@@ -82,20 +88,30 @@ import kotlinx.coroutines.tasks.await
  * - Deletions are not synced in either direction.
  * - No conflict resolution — last write wins, whichever side writes last.
  * - Push only runs when requested, not on a timer or connectivity change.
+ * - The reconciliation-pending notification (see ReconciliationNotifier) is
+ *   local only — it requires this SyncEngine's process to be alive and
+ *   collecting. It does NOT wake the app if killed; that would need FCM plus
+ *   a Cloud Function watching the sales/inventory collections server-side,
+ *   which doesn't exist yet.
  */
 class SyncEngine(
     private val smeDao: SMEDao,
     private val inventoryDao: InventoryDao,
     private val sessionManager: SessionManager,
     private val externalScope: CoroutineScope,
+    // Application context only — used solely to post/cancel the local
+    // reconciliation-pending notification (see ReconciliationNotifier).
+    private val context: Context,
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
     private var listenerJob: Job? = null
+    private var notifierJob: Job? = null
     private val activeListeners = mutableListOf<ListenerRegistration>()
 
     /** Call once, e.g. from MainActivity, after the user has entered a business. */
     fun start() {
         if (listenerJob != null) return
+        ReconciliationNotifier.ensureChannel(context)
         listenerJob = externalScope.launch {
             sessionManager.sessionState
                 .filter { it.hasBusiness }
@@ -113,6 +129,9 @@ class SyncEngine(
         activeListeners.clear()
         listenerJob?.cancel()
         listenerJob = null
+        notifierJob?.cancel()
+        notifierJob = null
+        ReconciliationNotifier.clear(context)
     }
 
     /** Fire-and-forget from the ViewModel after any local mutation, any entity. */
@@ -140,6 +159,21 @@ class SyncEngine(
             activeListeners += attachSaleFinancialsListener(businessRef)
             activeListeners += attachInventoryCostListener(businessRef)
         }
+
+        // Owner-only local notification for the reconciliation queue — see
+        // ReconciliationNotifier's class doc. Re-attaching listeners (e.g. on
+        // re-login) restarts this cleanly rather than stacking collectors.
+        notifierJob?.cancel()
+        notifierJob = if (role == MemberRole.OWNER) {
+            externalScope.launch {
+                combine(
+                    smeDao.getUnreconciledSalesCount(),
+                    inventoryDao.getUnreconciledItemsCount()
+                ) { sales, items -> (sales + items).toInt() }
+                    .distinctUntilChanged()
+                    .collect { count -> ReconciliationNotifier.notifyPending(context, count) }
+            }
+        } else null
 
         // Initial catch-up push in case there are locally-pending writes from
         // before this business was attached (e.g. offline signup/edits).

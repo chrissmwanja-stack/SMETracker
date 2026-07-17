@@ -1,10 +1,14 @@
 // MainActivity.kt
 package com.example.smetracker
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -13,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -38,6 +43,29 @@ import com.example.smetracker.viewmodel.SMEViewModelFactory
 class MainActivity : ComponentActivity() {
     private val database by lazy { SMEDatabase.getDatabase(this) }
 
+    // Registered eagerly (not `by lazy`) since ActivityResultLauncher must be
+    // registered before the Activity reaches STARTED — registering it lazily
+    // on first use from inside onEnterApp (called after setContent, i.e.
+    // after STARTED) would throw. The callback itself is a no-op: whether the
+    // owner grants this or not, the in-app badge on DashboardScreen still
+    // works either way, this permission only gates the system notification.
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    // Owner-only, matches ReconciliationNotifier's scope. No-ops below API 33
+    // (permission didn't exist yet, notifications just worked) and if
+    // already granted.
+    private fun requestNotificationPermissionIfOwner(role: MemberRole) {
+        if (role != MemberRole.OWNER) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     // Phase 2 auth dependencies — manual DI, matching the rest of the app.
     private val authRepository by lazy { AuthRepository() }
     private val sessionManager by lazy { SessionManager(applicationContext) }
@@ -52,7 +80,7 @@ class MainActivity : ComponentActivity() {
     // start() is safe to call multiple times (no-ops if already listening) and
     // internally waits for sessionManager.sessionState to report a business
     // before attaching anything, so it's fine to construct this eagerly.
-    private val syncEngine by lazy { SyncEngine(database.smeDao(), database.inventoryDao(), sessionManager, lifecycleScope) }
+    private val syncEngine by lazy { SyncEngine(database.smeDao(), database.inventoryDao(), sessionManager, lifecycleScope, applicationContext) }
 
     private val viewModelFactory by lazy {
         SMEViewModelFactory(SMERepository(database.smeDao(), database.inventoryDao()), syncEngine, sessionManager)
@@ -85,6 +113,7 @@ class MainActivity : ComponentActivity() {
                                 // already attached, so this is safe to call on every
                                 // login, including re-login after sign-out.
                                 syncEngine.start()
+                                requestNotificationPermissionIfOwner(role)
                             }
                         )
                     } else {
