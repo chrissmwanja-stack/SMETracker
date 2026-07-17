@@ -25,7 +25,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InventoryScreen(viewModel: SMEViewModel, navController: NavController) {
+fun InventoryScreen(viewModel: SMEViewModel, navController: NavController, isOwner: Boolean = false) {
     val inventoryItems by viewModel.inventoryItems.collectAsState()
     var showDialog by remember { mutableStateOf(false) }
     var selectedItem by remember { mutableStateOf<InventoryItem?>(null) }
@@ -99,6 +99,7 @@ fun InventoryScreen(viewModel: SMEViewModel, navController: NavController) {
     if (showDialog) {
         InventoryItemDialog(
             item = selectedItem,
+            isOwner = isOwner,
             onDismiss = { showDialog = false },
             onConfirm = { item ->
                 viewModel.upsertInventoryItem(item)
@@ -165,6 +166,7 @@ private fun InventoryListItem(
 @Composable
 private fun InventoryItemDialog(
     item: InventoryItem?,
+    isOwner: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (InventoryItem) -> Unit
 ) {
@@ -185,9 +187,18 @@ private fun InventoryItemDialog(
                     OutlinedTextField(value = quantity, onValueChange = { quantity = it }, label = { Text("Qty") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     OutlinedTextField(value = reorderLevel, onValueChange = { reorderLevel = it }, label = { Text("Reorder") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = costPrice, onValueChange = { costPrice = it }, label = { Text("Cost") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                    OutlinedTextField(value = sellingPrice, onValueChange = { sellingPrice = it }, label = { Text("Selling") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                // Cost is owner-only (see AddInventoryScreen's comment on the
+                // same field). costPrice's remembered state still carries
+                // whatever value was already loaded from `item`, so hiding
+                // this field for a worker leaves it untouched on save rather
+                // than resetting it.
+                if (isOwner) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = costPrice, onValueChange = { costPrice = it }, label = { Text("Cost") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                        OutlinedTextField(value = sellingPrice, onValueChange = { sellingPrice = it }, label = { Text("Selling") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    }
+                } else {
+                    OutlinedTextField(value = sellingPrice, onValueChange = { sellingPrice = it }, label = { Text("Selling Price") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text("Cancel") }

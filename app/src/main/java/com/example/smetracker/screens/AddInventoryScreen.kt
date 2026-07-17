@@ -20,7 +20,7 @@ import com.example.smetracker.viewmodel.SMEViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddInventoryScreen(viewModel: SMEViewModel, navController: NavController) {
+fun AddInventoryScreen(viewModel: SMEViewModel, navController: NavController, isOwner: Boolean = false) {
     var name by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("") }
     var costPrice by remember { mutableStateOf("") }       // ← NEW: what you paid per unit
@@ -89,30 +89,38 @@ fun AddInventoryScreen(viewModel: SMEViewModel, navController: NavController) {
                 }
             )
 
-            // Cost Price (what you paid — used for profit calculation)
-            OutlinedTextField(
-                value = costPrice,
-                onValueChange = {
-                    if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) {
-                        costPrice = it; showError = false
+            // Cost Price (what you paid — used for profit calculation).
+            // Owner-only: costPrice lives in the owner-only inventoryCosts
+            // Firestore collection (see firestore.rules) — a worker's push
+            // never attempts that write (SyncEngine gates it on role), so
+            // letting a worker type one in here would just be a value that
+            // sits in local Room and never syncs anywhere. Hidden entirely
+            // rather than shown-but-discarded, to avoid a confusing UI.
+            if (isOwner) {
+                OutlinedTextField(
+                    value = costPrice,
+                    onValueChange = {
+                        if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) {
+                            costPrice = it; showError = false
+                        }
+                    },
+                    label = { Text("Cost Price (UGX) *") },
+                    placeholder = { Text("What you paid per unit") },
+                    leadingIcon = { Icon(Icons.Default.AttachMoney, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Next
+                    ),
+                    isError = showError && costPrice.isBlank(),
+                    supportingText = {
+                        if (showError && costPrice.isBlank())
+                            Text("Cost price is required", color = MaterialTheme.colorScheme.error)
+                        else
+                            Text("Used to calculate profit on sales")
                     }
-                },
-                label = { Text("Cost Price (UGX) *") },
-                placeholder = { Text("What you paid per unit") },
-                leadingIcon = { Icon(Icons.Default.AttachMoney, contentDescription = null) },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Next
-                ),
-                isError = showError && costPrice.isBlank(),
-                supportingText = {
-                    if (showError && costPrice.isBlank())
-                        Text("Cost price is required", color = MaterialTheme.colorScheme.error)
-                    else
-                        Text("Used to calculate profit on sales")
-                }
-            )
+                )
+            }
 
             // Selling Price (what you charge customers)
             OutlinedTextField(
@@ -134,8 +142,9 @@ fun AddInventoryScreen(viewModel: SMEViewModel, navController: NavController) {
                 supportingText = {
                     if (showError && sellingPrice.isBlank()) {
                         Text("Selling price is required", color = MaterialTheme.colorScheme.error)
-                    } else {
-                        // Live margin hint once both prices are filled
+                    } else if (isOwner) {
+                        // Live margin hint once both prices are filled — owner-only,
+                        // since it's derived from costPrice.
                         val cost = costPrice.toDoubleOrNull()
                         val sell = sellingPrice.toDoubleOrNull()
                         if (cost != null && sell != null && sell > 0) {
@@ -175,7 +184,12 @@ fun AddInventoryScreen(viewModel: SMEViewModel, navController: NavController) {
             Button(
                 onClick = {
                     val qty = quantity.toIntOrNull()
-                    val cost = costPrice.toDoubleOrNull()
+                    // A worker never sees the cost field, so it's not required
+                    // for them — default to 0.0 rather than blocking the save.
+                    // That value never syncs to Firestore anyway (see
+                    // SyncEngine — inventoryCosts is owner-only), so it's a
+                    // harmless local placeholder, not a fabricated real cost.
+                    val cost = if (isOwner) costPrice.toDoubleOrNull() else 0.0
                     val sell = sellingPrice.toDoubleOrNull()
                     val minStock = minStockLevel.toIntOrNull() ?: 5
 

@@ -102,7 +102,7 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
-            item { SummarySection(isTablet = isTablet, uiState = uiState) }
+            item { SummarySection(isTablet = isTablet, uiState = uiState, isOwner = isOwner) }
             item {
                 QuickActionsSection(
                     isTablet = isTablet,
@@ -125,7 +125,7 @@ fun DashboardScreen(
                 )
             }
 
-            item { ReportsSection(isTablet = isTablet, uiState = uiState, onViewInventory = { navController.navigate(Screen.Inventory.route) }) }
+            item { ReportsSection(isTablet = isTablet, uiState = uiState, isOwner = isOwner, onViewInventory = { navController.navigate(Screen.Inventory.route) }) }
             item { Text("Recent Sales", fontWeight = FontWeight.SemiBold, fontSize = if (isTablet) 18.sp else 16.sp) }
             if (uiState.recentSales.isEmpty()) {
                 item { EmptyStateCard("No sales recorded yet") }
@@ -144,17 +144,24 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun SummarySection(isTablet: Boolean, uiState: DashboardUiState) {
+private fun SummarySection(isTablet: Boolean, uiState: DashboardUiState, isOwner: Boolean) {
     val hasLowStock = uiState.lowStockItems.isNotEmpty()
     Column {
         SectionTitle("Summary", isTablet)
         Spacer(Modifier.height(8.dp))
-        NetProfitBanner(
-            todayNetProfit = uiState.analytics.dailySales.netProfit,
-            monthNetProfit = uiState.analytics.monthlySales.netProfit,
-            isTablet = isTablet
-        )
-        Spacer(Modifier.height(if (isTablet) 12.dp else 10.dp))
+        // Net profit is derived from costPrice/profit, which SyncEngine never
+        // pulls down for a worker session (see SyncEngine's owner-only
+        // listener gating) — so a worker's local copy is always 0. Gating in
+        // the UI too avoids showing a confusing "UGX 0" banner instead of
+        // just not showing owner-only data at all.
+        if (isOwner) {
+            NetProfitBanner(
+                todayNetProfit = uiState.analytics.dailySales.netProfit,
+                monthNetProfit = uiState.analytics.monthlySales.netProfit,
+                isTablet = isTablet
+            )
+            Spacer(Modifier.height(if (isTablet) 12.dp else 10.dp))
+        }
         if (isTablet) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SummaryCard(Modifier.weight(1f), "Today's Revenue", CurrencyUtils.formatUgx(uiState.todayRevenue), Icons.Default.AttachMoney, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
@@ -164,9 +171,12 @@ private fun SummarySection(isTablet: Boolean, uiState: DashboardUiState) {
             }
             Spacer(Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SummaryCard(Modifier.weight(1f), "Stock Value", CurrencyUtils.formatUgx(uiState.totalStockValue), Icons.Default.Inventory, MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+                // Stock Value is quantity × costPrice — owner-only data (see above).
+                if (isOwner) {
+                    SummaryCard(Modifier.weight(1f), "Stock Value", CurrencyUtils.formatUgx(uiState.totalStockValue), Icons.Default.Inventory, MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+                }
                 SummaryCard(Modifier.weight(1f), "Low Stock", "${uiState.lowStockItems.size} items", Icons.Default.WarningAmber, if (hasLowStock) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant, if (hasLowStock) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.weight(2f))
+                Spacer(Modifier.weight(if (isOwner) 2f else 1f))
             }
         } else {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -178,10 +188,18 @@ private fun SummarySection(isTablet: Boolean, uiState: DashboardUiState) {
                 SummaryCard(Modifier.weight(1f), "Outstanding Debt", CurrencyUtils.formatUgx(uiState.totalOutstandingDebt), Icons.Default.Warning, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
                 SummaryCard(Modifier.weight(1f), "Customers", "${uiState.customers.size}", Icons.Default.People, MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
             }
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                SummaryCard(Modifier.weight(1f), "Stock Value", CurrencyUtils.formatUgx(uiState.totalStockValue), Icons.Default.Inventory, MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
-                SummaryCard(Modifier.weight(1f), "Low Stock", "${uiState.lowStockItems.size} items", Icons.Default.WarningAmber, if (hasLowStock) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant, if (hasLowStock) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+            // Stock Value is quantity × costPrice — owner-only data (see above).
+            // A worker still gets the Low Stock card, just full-width instead
+            // of sharing a row with the hidden Stock Value card.
+            if (isOwner) {
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SummaryCard(Modifier.weight(1f), "Stock Value", CurrencyUtils.formatUgx(uiState.totalStockValue), Icons.Default.Inventory, MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+                    SummaryCard(Modifier.weight(1f), "Low Stock", "${uiState.lowStockItems.size} items", Icons.Default.WarningAmber, if (hasLowStock) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant, if (hasLowStock) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                Spacer(Modifier.height(10.dp))
+                SummaryCard(Modifier.fillMaxWidth(), "Low Stock", "${uiState.lowStockItems.size} items", Icons.Default.WarningAmber, if (hasLowStock) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant, if (hasLowStock) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -301,14 +319,16 @@ private fun ExpensesTasksSection(totalExpenses: Double, pendingTaskCount: Int, o
 }
 
 @Composable
-private fun ReportsSection(isTablet: Boolean, uiState: DashboardUiState, onViewInventory: () -> Unit) {
+private fun ReportsSection(isTablet: Boolean, uiState: DashboardUiState, isOwner: Boolean, onViewInventory: () -> Unit) {
     Column {
         SectionTitle("Reports", isTablet)
         Spacer(Modifier.height(8.dp))
         if (isTablet) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    ProfitReportCard(uiState.analytics)
+                    // Profit & Loss is derived from costPrice/profit — owner-only
+                    // data. A worker's local copy is always 0 (see SummarySection).
+                    if (isOwner) { ProfitReportCard(uiState.analytics) }
                     SalesReportCard(uiState.analytics)
                     TopCustomersCard(uiState.analytics.topCustomers)
                 }
@@ -328,7 +348,7 @@ private fun ReportsSection(isTablet: Boolean, uiState: DashboardUiState, onViewI
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (uiState.lowStockItems.isNotEmpty()) { LowStockBanner(uiState.lowStockItems, onViewInventory) }
-                ProfitReportCard(uiState.analytics)
+                if (isOwner) { ProfitReportCard(uiState.analytics) }
                 SalesReportCard(uiState.analytics)
                 InventoryReportCard(
                     totalItems = uiState.inventoryItems.size,

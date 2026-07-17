@@ -107,11 +107,11 @@ class MainActivity : ComponentActivity() {
                             composable(Screen.AddSale.route) { AddSaleScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.AddDebt.route) { AddDebtScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.AddCustomer.route) { AddCustomerScreen(viewModel = viewModel, navController = navController) }
-                            composable(Screen.AddInventory.route) { AddInventoryScreen(viewModel = viewModel, navController = navController) }
+                            composable(Screen.AddInventory.route) { AddInventoryScreen(viewModel = viewModel, navController = navController, isOwner = currentEntry.second == MemberRole.OWNER) }
                             composable(Screen.Customers.route) { CustomersScreen(viewModel = viewModel, navController = navController) }
-                            composable(Screen.Inventory.route) { InventoryScreen(viewModel = viewModel, navController = navController) }
+                            composable(Screen.Inventory.route) { InventoryScreen(viewModel = viewModel, navController = navController, isOwner = currentEntry.second == MemberRole.OWNER) }
                             composable(Screen.Reports.route) { ReportsScreen(navController = navController) }
-                            composable(Screen.SalesReport.route) { SalesReportScreen(viewModel = viewModel, navController = navController) }
+                            composable(Screen.SalesReport.route) { SalesReportScreen(viewModel = viewModel, navController = navController, isOwner = currentEntry.second == MemberRole.OWNER) }
                             composable(Screen.DebtReport.route) { DebtReportScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.InventoryReport.route) { InventoryReportScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.TopCustomers.route) { TopCustomersScreen(viewModel = viewModel, navController = navController) }

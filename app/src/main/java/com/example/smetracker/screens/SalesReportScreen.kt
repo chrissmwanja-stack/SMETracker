@@ -15,7 +15,7 @@ import com.example.smetracker.viewmodel.SMEViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SalesReportScreen(viewModel: SMEViewModel, navController: NavController) {
+fun SalesReportScreen(viewModel: SMEViewModel, navController: NavController, isOwner: Boolean = false) {
     val uiState by viewModel.uiState.collectAsState()
     val analytics = uiState.analytics
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -73,17 +73,23 @@ fun SalesReportScreen(viewModel: SMEViewModel, navController: NavController) {
 
             Spacer(Modifier.height(16.dp))
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Profit & Loss", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
-                    Spacer(Modifier.height(8.dp))
-                    ReportRow("Today", "Gross ${CurrencyUtils.formatUgx(analytics.dailySales.profit)} − Exp ${CurrencyUtils.formatUgx(analytics.dailySales.expenses)}", CurrencyUtils.formatUgx(analytics.dailySales.netProfit))
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    ReportRow("This Week", "Gross ${CurrencyUtils.formatUgx(analytics.weeklySales.profit)} − Exp ${CurrencyUtils.formatUgx(analytics.weeklySales.expenses)}", CurrencyUtils.formatUgx(analytics.weeklySales.netProfit))
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    ReportRow("This Month", "Gross ${CurrencyUtils.formatUgx(analytics.monthlySales.profit)} − Exp ${CurrencyUtils.formatUgx(analytics.monthlySales.expenses)}", CurrencyUtils.formatUgx(analytics.monthlySales.netProfit))
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    ReportRow("All Time", "Gross ${CurrencyUtils.formatUgx(analytics.allTimeSales.profit)} − Exp ${CurrencyUtils.formatUgx(analytics.allTimeSales.expenses)}", CurrencyUtils.formatUgx(analytics.allTimeSales.netProfit), isBold = true)
+            // Profit & Loss is derived from costPrice/profit — owner-only
+            // data. SyncEngine never pulls saleFinancials down for a worker
+            // session, so a worker's local copy is always 0; hide the card
+            // rather than show a confusing all-zero P&L.
+            if (isOwner) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("Profit & Loss", fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                        Spacer(Modifier.height(8.dp))
+                        ReportRow("Today", "Gross ${CurrencyUtils.formatUgx(analytics.dailySales.profit)} − Exp ${CurrencyUtils.formatUgx(analytics.dailySales.expenses)}", CurrencyUtils.formatUgx(analytics.dailySales.netProfit))
+                        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                        ReportRow("This Week", "Gross ${CurrencyUtils.formatUgx(analytics.weeklySales.profit)} − Exp ${CurrencyUtils.formatUgx(analytics.weeklySales.expenses)}", CurrencyUtils.formatUgx(analytics.weeklySales.netProfit))
+                        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                        ReportRow("This Month", "Gross ${CurrencyUtils.formatUgx(analytics.monthlySales.profit)} − Exp ${CurrencyUtils.formatUgx(analytics.monthlySales.expenses)}", CurrencyUtils.formatUgx(analytics.monthlySales.netProfit))
+                        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                        ReportRow("All Time", "Gross ${CurrencyUtils.formatUgx(analytics.allTimeSales.profit)} − Exp ${CurrencyUtils.formatUgx(analytics.allTimeSales.expenses)}", CurrencyUtils.formatUgx(analytics.allTimeSales.netProfit), isBold = true)
+                    }
                 }
             }
         }
