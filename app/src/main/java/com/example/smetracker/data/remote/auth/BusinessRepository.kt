@@ -105,6 +105,15 @@ class BusinessRepository(
      * Owner-only action: provisions a worker's account ahead of time. The
      * worker does nothing to "accept" — they just log in with OTP on their
      * own phone afterward and phoneIndex routes them straight in.
+     *
+     * No client-side "is this phone already registered?" pre-check here —
+     * firestore.rules only lets a phone read its OWN phoneIndex entry
+     * (`myPhone() == phone`), so the owner has no way to read the worker's
+     * phoneIndex doc to check first. That's fine: the rules already enforce
+     * uniqueness on the write itself — phoneIndex's `allow create` only
+     * matches a doc that doesn't exist yet, and `allow update: if false`
+     * blocks any write to one that does — so a duplicate phone number gets
+     * rejected by the write regardless.
      */
     suspend fun addWorker(
         businessId: String,
@@ -117,11 +126,6 @@ class BusinessRepository(
             val phoneIndexRef = firestore.collection("phoneIndex").document(workerPhoneE164)
 
             firestore.runTransaction { txn ->
-                val existing = txn.get(phoneIndexRef)
-                if (existing.exists()) {
-                    throw IllegalStateException("This phone number is already registered to a business.")
-                }
-
                 txn.set(memberRef, mapOf(
                     "role" to "WORKER",
                     "name" to workerName,
@@ -130,7 +134,10 @@ class BusinessRepository(
 
                 // Must be uppercase — firestore.rules' phoneIndex Case 2
                 // create rule checks request.resource.data.role == 'WORKER'
-                // as an exact string match.
+                // as an exact string match. If this phone is already
+                // registered, the rules' allow update:false denies this
+                // write outright (see class doc above) rather than us
+                // catching it via a pre-check.
                 txn.set(phoneIndexRef, mapOf(
                     "businessId" to businessId,
                     "role" to "WORKER"
@@ -139,7 +146,17 @@ class BusinessRepository(
 
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(e)
+            // Could be: phone already registered (rules deny the phoneIndex
+            // update), caller no longer an owner of this business, or a
+            // genuine network/permissions problem — can't distinguish these
+            // client-side without the read we deliberately don't do above.
+            Result.failure(
+                Exception(
+                    "Could not add worker. This phone number may already be registered " +
+                            "to a business, or you may no longer have owner access.",
+                    e
+                )
+            )
         }
     }
 
