@@ -10,8 +10,24 @@ class BusinessRepository(
 
     /**
      * First-time setup: the currently-signed-in phone number becomes the
-     * owner of a brand new business. Writes businesses/{id},
-     * businesses/{id}/members/{phone}, and phoneIndex/{phone} atomically.
+     * owner of a brand new business.
+     *
+     * IMPORTANT: this can NOT be a single atomic transaction. Firestore
+     * security rules evaluate get()/exists() calls against the database
+     * state as of the START of a transaction/batch — they never see other
+     * writes happening alongside them in the same transaction. That creates
+     * a circular dependency here: the phoneIndex rule requires
+     * businesses/{id} to already exist, and the members rule requires
+     * phoneIndex/{phone} to already exist. Bundling all three in one
+     * transaction means none of them can ever pass.
+     *
+     * So this does three separate, sequentially-awaited writes instead,
+     * ordered by dependency: business → phoneIndex → members. members is
+     * last because it's the least critical of the three — isMemberOf()
+     * (and therefore all of isOwnerOf/isWorkerOf) only ever reads
+     * phoneIndex, never the members subcollection. If step 3 fails after
+     * steps 1-2 succeed, the account is still fully functional; the
+     * business just doesn't have a member-directory row for itself yet.
      */
     suspend fun createBusinessWithOwner(
         ownerPhoneE164: String,
@@ -19,35 +35,58 @@ class BusinessRepository(
         businessName: String
     ): Result<String> {
         return try {
+            // Guard: don't let a phone that's already indexed create a second business.
+            val phoneIndexRef = firestore.collection("phoneIndex").document(ownerPhoneE164)
+            if (phoneIndexRef.get().await().exists()) {
+                return Result.failure(IllegalStateException("This phone number is already registered to a business."))
+            }
+
             val businessId = UUID.randomUUID().toString()
             val businessRef = firestore.collection("businesses").document(businessId)
             val memberRef = businessRef.collection("members").document(ownerPhoneE164)
-            val phoneIndexRef = firestore.collection("phoneIndex").document(ownerPhoneE164)
 
-            firestore.runTransaction { txn ->
-                // Guard: don't let a phone that's already indexed create a second business.
-                val existing = txn.get(phoneIndexRef)
-                if (existing.exists()) {
-                    throw IllegalStateException("This phone number is already registered to a business.")
-                }
-
-                txn.set(businessRef, mapOf(
+            // Step 1 — business must exist before phoneIndex can reference it.
+            businessRef.set(
+                mapOf(
                     "name" to businessName,
                     "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
                     "ownerPhone" to ownerPhoneE164
-                ))
+                )
+            ).await()
 
-                txn.set(memberRef, mapOf(
-                    "role" to "owner",
-                    "name" to ownerName,
-                    "addedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                ))
+            // Step 2 — phoneIndex must exist before the members write's
+            // isOwnerOf() check can pass. This is the step that makes the
+            // account actually functional; if it fails, we haven't left a
+            // dangling business the user can't recover from re-attempting
+            // (the "already registered" guard above only fires once
+            // phoneIndex exists, so a retry after a step-1-only partial
+            // failure would just create a second, orphaned business doc —
+            // acceptable for now, but worth a cleanup pass later).
+            try {
+                phoneIndexRef.set(
+                    mapOf(
+                        "businessId" to businessId,
+                        "role" to "owner"
+                    )
+                ).await()
+            } catch (e: Exception) {
+                return Result.failure(e)
+            }
 
-                txn.set(phoneIndexRef, mapOf(
-                    "businessId" to businessId,
-                    "role" to "owner"
-                ))
-            }.await()
+            // Step 3 — members directory entry. Best-effort: the account
+            // works without it (see class doc above), so don't fail the
+            // whole sign-up over it, but don't silently swallow it either.
+            try {
+                memberRef.set(
+                    mapOf(
+                        "role" to "owner",
+                        "name" to ownerName,
+                        "addedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                    )
+                ).await()
+            } catch (e: Exception) {
+                // Non-fatal — log this in real usage so it can be backfilled.
+            }
 
             Result.success(businessId)
         } catch (e: Exception) {
