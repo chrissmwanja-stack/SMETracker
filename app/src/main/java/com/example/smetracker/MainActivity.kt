@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -23,6 +24,7 @@ import com.example.smetracker.data.remote.auth.AuthViewModel
 import com.example.smetracker.data.remote.auth.BusinessRepository
 import com.example.smetracker.data.remote.auth.MemberRole
 import com.example.smetracker.data.remote.auth.SessionManager
+import com.example.smetracker.data.remote.sync.SyncEngine
 import com.example.smetracker.navigation.Screen
 import com.example.smetracker.repository.SMERepository
 import com.example.smetracker.screens.*
@@ -34,9 +36,6 @@ import com.example.smetracker.viewmodel.SMEViewModelFactory
 
 class MainActivity : ComponentActivity() {
     private val database by lazy { SMEDatabase.getDatabase(this) }
-    private val viewModelFactory by lazy {
-        SMEViewModelFactory(SMERepository(database.smeDao(), database.inventoryDao()))
-    }
 
     // Phase 2 auth dependencies — manual DI, matching the rest of the app.
     private val authRepository by lazy { AuthRepository() }
@@ -44,6 +43,18 @@ class MainActivity : ComponentActivity() {
     private val businessRepository by lazy { BusinessRepository() }
     private val authViewModelFactory by lazy {
         AuthViewModelFactory(authRepository, sessionManager)
+    }
+
+    // Phase 3 sync — Customer-only proof for now (see SyncEngine's class doc).
+    // Scoped to lifecycleScope: cancelled automatically on Activity destroy,
+    // matching the rest of this app's "no long-lived process-level DI" pattern.
+    // start() is safe to call multiple times (no-ops if already listening) and
+    // internally waits for sessionManager.sessionState to report a business
+    // before attaching anything, so it's fine to construct this eagerly.
+    private val syncEngine by lazy { SyncEngine(database.smeDao(), sessionManager, lifecycleScope) }
+
+    private val viewModelFactory by lazy {
+        SMEViewModelFactory(SMERepository(database.smeDao(), database.inventoryDao()), syncEngine)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,6 +80,10 @@ class MainActivity : ComponentActivity() {
                             businessRepository = businessRepository,
                             onEnterApp = { businessId, role ->
                                 entered = businessId to role
+                                // Idempotent: SyncEngine.start() no-ops if a listener is
+                                // already attached, so this is safe to call on every
+                                // login, including re-login after sign-out.
+                                syncEngine.start()
                             }
                         )
                     } else {
@@ -82,6 +97,7 @@ class MainActivity : ComponentActivity() {
                                     navController = navController,
                                     onSignOut = {
                                         authViewModel.signOut()
+                                        syncEngine.stop()
                                         entered = null
                                     },
                                     isOwner = currentEntry.second == MemberRole.OWNER,

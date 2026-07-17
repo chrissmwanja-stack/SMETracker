@@ -10,6 +10,9 @@ interface SMEDao {
     @Query("SELECT * FROM sales ORDER BY date DESC")
     fun getAllSales(): Flow<List<Sale>>
 
+    @Query("SELECT * FROM sales WHERE id = :saleId")
+    suspend fun getSaleById(saleId: String): Sale?
+
     @Query("SELECT SUM(amount) FROM sales")
     fun getTotalRevenue(): Flow<Double?>
 
@@ -19,8 +22,23 @@ interface SMEDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSale(sale: Sale): Long
 
+    // Sync pull, financials half only: costPriceSnapshot/profit come from a
+    // SEPARATE Firestore listener (saleFinancials) than the core sale fields
+    // (sales), which can arrive in either order. This patches just those two
+    // columns so it never clobbers whatever the sales listener already wrote
+    // (or will write) for the rest of the row.
+    @Query("UPDATE sales SET costPriceSnapshot = :costPriceSnapshot, profit = :profit WHERE id = :saleId")
+    suspend fun updateSaleFinancials(saleId: String, costPriceSnapshot: Double, profit: Double)
+
     @Delete
     suspend fun deleteSale(sale: Sale)
+
+    // ── Sync (Sale) ──────────────────────────────────────────────
+    @Query("SELECT * FROM sales WHERE pendingSync = 1")
+    suspend fun getPendingSyncSales(): List<Sale>
+
+    @Query("UPDATE sales SET pendingSync = 0 WHERE id = :saleId")
+    suspend fun clearSalePendingSync(saleId: String)
 
     // ── Customers ─────────────────────────────────────────────────
     @Query("SELECT * FROM customers ORDER BY name ASC")
@@ -64,6 +82,13 @@ interface SMEDao {
     @Delete
     suspend fun deleteDebt(debt: Debt)
 
+    // ── Sync (Debt) ──────────────────────────────────────────────
+    @Query("SELECT * FROM debts WHERE pendingSync = 1")
+    suspend fun getPendingSyncDebts(): List<Debt>
+
+    @Query("UPDATE debts SET pendingSync = 0 WHERE id = :debtId")
+    suspend fun clearDebtPendingSync(debtId: String)
+
     // ── Expenses ─────────────────────────────────────────────────
     @Query("SELECT * FROM expenses ORDER BY date DESC")
     fun getAllExpenses(): Flow<List<Expense>>
@@ -76,6 +101,13 @@ interface SMEDao {
 
     @Delete
     suspend fun deleteExpense(expense: Expense)
+
+    // ── Sync (Expense) ───────────────────────────────────────────
+    @Query("SELECT * FROM expenses WHERE pendingSync = 1")
+    suspend fun getPendingSyncExpenses(): List<Expense>
+
+    @Query("UPDATE expenses SET pendingSync = 0 WHERE id = :expenseId")
+    suspend fun clearExpensePendingSync(expenseId: String)
 
     // ── Tasks ────────────────────────────────────────────────────
     @Query("SELECT * FROM tasks WHERE isCompleted = 0 ORDER BY dueDate ASC")

@@ -20,7 +20,7 @@ import com.example.smetracker.data.entities.Task
 
 @Database(
     entities = [Sale::class, Customer::class, Debt::class, InventoryItem::class, Expense::class, Task::class],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -50,6 +50,16 @@ abstract class SMEDatabase : RoomDatabase() {
         // column was added to every entity for the Phase 3 sync engine. No real user
         // data exists yet, so this relies on fallbackToDestructiveMigration below
         // rather than a hand-written Migration — the local DB is simply recreated.
+
+        // v7 -> v8: Sale gained `costPriceSnapshot`; Expense gained `recordedBy`,
+        // `status`, `approvedBy`, `approvedAt` — needed to finish wiring the sync
+        // engine to these two entities. Same as v6->v7, this rides on
+        // fallbackToDestructiveMigration rather than a hand-written Migration.
+        // IMPORTANT: if any device testing this build has real local data (sales,
+        // expenses, etc.) you care about, back it up before upgrading — this wipes
+        // the local Room database on version bump. Fine for now since this is still
+        // pre-launch, but write a real Migration instead once there's user data
+        // worth preserving across an app update.
 
         fun getDatabase(context: Context): SMEDatabase {
             return INSTANCE ?: synchronized(this) {

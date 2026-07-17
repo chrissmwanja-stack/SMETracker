@@ -34,6 +34,11 @@ data class Sale(
     val description: String,
     val amount: Double,
     val profit: Double = 0.0,
+    // Total cost basis for this sale (costPrice * quantity), snapshotted at
+    // sale time — mirrors SaleFinancials.costPrice on the remote side, which
+    // is deliberately NOT looked up live from inventory so historical profit
+    // stays accurate even if the item's cost price changes later.
+    val costPriceSnapshot: Double = 0.0,
     val inventoryItemId: String? = null,
     @ColumnInfo(defaultValue = "1") val quantity: Int = 1,
     val date: Long = System.currentTimeMillis(),
