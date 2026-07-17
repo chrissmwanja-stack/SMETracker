@@ -21,7 +21,7 @@ import com.example.smetracker.data.entities.Task
 
 @Database(
     entities = [Sale::class, Customer::class, Debt::class, InventoryItem::class, Expense::class, Task::class, StockAdjustment::class],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -67,6 +67,26 @@ abstract class SMEDatabase : RoomDatabase() {
         // fallbackToDestructiveMigration as v6->v7 and v7->v8 above; write a
         // real Migration instead once there's real user data to preserve.
 
+        // v9 -> v10: Sale and InventoryItem each gained `recordedBy` and a
+        // reconciliation flag (`financialsReconciled` / `costReconciled`) —
+        // backs the owner Reconciliation screen, which surfaces worker-
+        // recorded sales/items whose cost/profit an owner hasn't reviewed
+        // yet. First real hand-written migration since v6->v7: this app is
+        // no longer pre-launch, so existing local data (sales, inventory)
+        // must be preserved, not wiped. Both new boolean columns default to
+        // 1 (true/reconciled) so pre-existing rows don't suddenly flood the
+        // reconciliation queue — only sales/items created going forward can
+        // be flagged false, and only when a worker's device is the one
+        // creating them (see SMEViewModel.addSale / upsertInventoryItem).
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE sales ADD COLUMN recordedBy TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE sales ADD COLUMN financialsReconciled INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE inventory_items ADD COLUMN recordedBy TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE inventory_items ADD COLUMN costReconciled INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
         fun getDatabase(context: Context): SMEDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -74,7 +94,7 @@ abstract class SMEDatabase : RoomDatabase() {
                     SMEDatabase::class.java,
                     "sme_tracker_database"
                 )
-                    .addMigrations(MIGRATION_5_6)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_9_10)
                     // Safety net for older installs with no migration path defined (v1-v4).
                     // Any new schema change from here on should get its own Migration above
                     // instead of relying on this, or existing user data will be wiped on upgrade.

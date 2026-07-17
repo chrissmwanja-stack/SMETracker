@@ -43,5 +43,18 @@ data class Sale(
     @ColumnInfo(defaultValue = "1") val quantity: Int = 1,
     val date: Long = System.currentTimeMillis(),
     val paymentMethod: PaymentMethod = PaymentMethod.CASH,
+    // Phone number (E.164) of whoever recorded this sale — mirrors
+    // Expense.recordedBy. Blank until the first sync push fills it in from
+    // the current session (see SyncEngine), same as Expense.
+    @ColumnInfo(defaultValue = "''") val recordedBy: String = "",
+    // False means this sale's costPriceSnapshot/profit are not yet trustworthy
+    // and need an owner's review — see the Reconciliation screen. Defaults to
+    // true so existing pre-migration rows (and any sale with no linked
+    // inventory item, whose profit is legitimately 0/unknown) don't suddenly
+    // appear in the reconciliation queue. Set to false only when a worker
+    // records a sale against a tracked inventory item, since a worker's
+    // device never has real cost data to compute profit from — see
+    // SMEViewModel.addSale and SyncEngine's class doc.
+    @ColumnInfo(defaultValue = "1") val financialsReconciled: Boolean = true,
     val pendingSync: Boolean = true
 )

@@ -13,5 +13,9 @@ data class RemoteInventoryItem(
     val quantity: Int = 0,
     val reorderLevel: Int = 5,
     val sellingPrice: Double = 0.0,
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    // Phone number (E.164) of whoever created this item — mirrors
+    // RemoteSale.recordedBy. Used by an owner's device to know whose items
+    // need a cost review; see SyncEngine and the Reconciliation screen.
+    val recordedBy: String = ""
 )

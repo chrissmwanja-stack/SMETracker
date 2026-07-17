@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.smetracker.data.DashboardAnalytics
 import com.example.smetracker.data.DashboardUiState
 import com.example.smetracker.data.entities.*
+import com.example.smetracker.data.remote.auth.SessionManager
 import com.example.smetracker.data.remote.sync.SyncEngine
 import com.example.smetracker.repository.SMERepository
 import com.example.smetracker.utils.IdGenerator
@@ -21,7 +22,13 @@ class SMEViewModel(
     // syncEngine?.requestPush() after its local write — deletions are the
     // one exception, since SyncEngine doesn't sync deletes in either
     // direction yet (a known limitation, not an oversight here).
-    private val syncEngine: SyncEngine? = null
+    private val syncEngine: SyncEngine? = null,
+    // Nullable for the same reason as syncEngine. Used only to stamp
+    // recordedBy and the reconciliation flags at creation time (see
+    // addSale/addInventoryItem/upsertInventoryItem) — when null, new sales
+    // and inventory items are treated as owner-recorded/already-reconciled,
+    // matching this ViewModel's pre-reconciliation behavior.
+    private val sessionManager: SessionManager? = null
 ) : ViewModel() {
 
     val sales: StateFlow<List<Sale>> = repository.allSales
@@ -41,6 +48,26 @@ class SMEViewModel(
 
     val pendingTasks: StateFlow<List<Task>> = repository.getPendingTasks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // ── Reconciliation (owner-only; screen is responsible for gating) ──
+    val unreconciledSales: StateFlow<List<Sale>> = repository.unreconciledSales
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val unreconciledInventoryItems: StateFlow<List<InventoryItem>> = repository.unreconciledInventoryItems
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val unreconciledCount: StateFlow<Int> = combine(
+        repository.unreconciledSalesCount, repository.unreconciledInventoryCount
+    ) { sales, items -> (sales + items).toInt() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    // Snapshot of "who's recording this and is it trustworthy", read fresh at
+    // each mutation rather than cached, since the session can change (e.g.
+    // sign-out/sign-in) across the ViewModel's lifetime.
+    private suspend fun currentSession(): Pair<String, Boolean> {
+        val session = sessionManager?.sessionState?.first()
+        return (session?.phoneNumberE164 ?: "") to (session?.isOwner ?: true)
+    }
 
     val uiState: StateFlow<DashboardUiState> = combine(
         sales, customers, debts, inventoryItems, expenses
@@ -108,14 +135,27 @@ class SMEViewModel(
     // id is only generated here, at the moment we know it's really an insert.
     fun upsertInventoryItem(item: InventoryItem) = viewModelScope.launch {
         if (item.id.isBlank()) {
-            repository.insertInventoryItem(item.copy(id = IdGenerator.newId()))
+            val (myPhone, isOwner) = currentSession()
+            // A worker's Add dialog never shows a cost field (see
+            // InventoryItemDialog), so costPrice here is always the unset 0.0
+            // default for a worker — that's exactly the case that needs an
+            // owner's review. An owner creating the item already entered a
+            // real cost, so it's reconciled immediately.
+            repository.insertInventoryItem(
+                item.copy(id = IdGenerator.newId(), recordedBy = myPhone, costReconciled = isOwner)
+            )
         } else {
-            repository.updateInventoryItem(item)
+            // Editing an existing item always goes through the owner-only
+            // cost field when isOwner (see InventoryItemDialog) — if this
+            // save came from an owner, treat it as having reviewed the cost.
+            val (_, isOwner) = currentSession()
+            repository.updateInventoryItem(if (isOwner) item.copy(costReconciled = true) else item)
         }
         syncEngine?.requestPush()
     }
 
     fun addInventoryItem(name: String, quantity: Int, sellingPrice: Double, category: String = "", costPrice: Double = 0.0, reorderLevel: Int = 5) = viewModelScope.launch {
+        val (myPhone, isOwner) = currentSession()
         repository.insertInventoryItem(
             InventoryItem(
                 name = name,
@@ -123,7 +163,9 @@ class SMEViewModel(
                 sellingPrice = sellingPrice,
                 category = category,
                 costPrice = costPrice,
-                reorderLevel = reorderLevel
+                reorderLevel = reorderLevel,
+                recordedBy = myPhone,
+                costReconciled = isOwner
             )
         )
         syncEngine?.requestPush()
@@ -162,6 +204,13 @@ class SMEViewModel(
     ) = viewModelScope.launch {
         val soldItem = inventoryItemId?.let { id -> inventoryItems.value.find { it.id == id } }
         val profit = soldItem?.let { (it.sellingPrice - it.costPrice) * quantity } ?: 0.0
+        val (myPhone, isOwner) = currentSession()
+        // A custom/service sale (no linked item) has no cost basis to review,
+        // so it's reconciled by definition. A sale tied to a tracked item is
+        // only trustworthy if an owner's device computed the profit — a
+        // worker's device never has real cost data (see InventoryItemDialog),
+        // so its profit here is always 0 and needs an owner's review.
+        val financialsReconciled = inventoryItemId == null || isOwner
 
         repository.insertSale(
             Sale(
@@ -172,7 +221,9 @@ class SMEViewModel(
                 inventoryItemId = inventoryItemId,
                 quantity = quantity,
                 paymentMethod = paymentMethod,
-                date = System.currentTimeMillis()
+                date = System.currentTimeMillis(),
+                recordedBy = myPhone,
+                financialsReconciled = financialsReconciled
             )
         )
 
@@ -223,5 +274,24 @@ class SMEViewModel(
 
     fun deleteTask(task: Task) = viewModelScope.launch {
         repository.deleteTask(task)
+    }
+
+    // Reconciliation Actions (owner-only; screen is responsible for gating)
+    // costPricePerUnit is what the owner enters (matches how InventoryItem.
+    // costPrice is entered everywhere else). Sale.costPriceSnapshot is
+    // documented as the TOTAL cost basis (costPrice * quantity), and
+    // Sale.amount is the total the customer paid for the whole line — so
+    // profit is amount minus total cost, not a per-unit difference.
+    fun reconcileSale(saleId: String, costPricePerUnit: Double) = viewModelScope.launch {
+        val sale = unreconciledSales.value.find { it.id == saleId } ?: return@launch
+        val totalCost = costPricePerUnit * sale.quantity
+        val profit = sale.amount - totalCost
+        repository.reconcileSaleFinancials(saleId, totalCost, profit)
+        syncEngine?.requestPush()
+    }
+
+    fun reconcileInventoryCost(itemId: String, costPrice: Double) = viewModelScope.launch {
+        repository.reconcileItemCost(itemId, costPrice)
+        syncEngine?.requestPush()
     }
 }

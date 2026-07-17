@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity() {
     private val syncEngine by lazy { SyncEngine(database.smeDao(), database.inventoryDao(), sessionManager, lifecycleScope) }
 
     private val viewModelFactory by lazy {
-        SMEViewModelFactory(SMERepository(database.smeDao(), database.inventoryDao()), syncEngine)
+        SMEViewModelFactory(SMERepository(database.smeDao(), database.inventoryDao()), syncEngine, sessionManager)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -139,6 +139,11 @@ class MainActivity : ComponentActivity() {
                             composable(Screen.PaymentBreakdown.route) {
                                 OwnerOnlyGate(isOwner = currentEntry.second == MemberRole.OWNER, navController = navController) {
                                     PaymentBreakdownScreen(viewModel = viewModel, navController = navController)
+                                }
+                            }
+                            composable(Screen.Reconciliation.route) {
+                                OwnerOnlyGate(isOwner = currentEntry.second == MemberRole.OWNER, navController = navController) {
+                                    ReconciliationScreen(viewModel = viewModel, navController = navController)
                                 }
                             }
                             composable(Screen.Expenses.route) { ExpensesScreen(viewModel = viewModel, navController = navController) }

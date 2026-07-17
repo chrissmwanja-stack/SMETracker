@@ -23,6 +23,17 @@ class SMERepository(
     suspend fun updateSale(sale: Sale) = smeDao.insertSale(sale)
     suspend fun deleteSale(sale: Sale) = smeDao.deleteSale(sale)
 
+    // ── Reconciliation ───────────────────────────────────────────
+    val unreconciledSales: Flow<List<Sale>> = smeDao.getUnreconciledSales()
+    val unreconciledSalesCount: Flow<Long> = smeDao.getUnreconciledSalesCount()
+    suspend fun reconcileSaleFinancials(saleId: String, costPriceSnapshot: Double, profit: Double) =
+        smeDao.reconcileSaleFinancials(saleId, costPriceSnapshot, profit)
+
+    val unreconciledInventoryItems: Flow<List<InventoryItem>> = inventoryDao.getUnreconciledItems()
+    val unreconciledInventoryCount: Flow<Long> = inventoryDao.getUnreconciledItemsCount()
+    suspend fun reconcileItemCost(itemId: String, costPrice: Double) =
+        inventoryDao.reconcileItemCost(itemId, costPrice)
+
     // ── Customers ─────────────────────────────────────────────────
     val allCustomers: Flow<List<Customer>> = smeDao.getAllCustomers()
 

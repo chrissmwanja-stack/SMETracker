@@ -63,6 +63,22 @@ interface InventoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAdjustmentFromRemote(adjustment: StockAdjustment)
 
+    // ── Reconciliation (InventoryItem) ───────────────────────────
+    // Owner-only queries backing the Reconciliation screen — surfaces items
+    // a worker created, whose cost price is still the unset default and
+    // needs an owner's review.
+    @Query("SELECT * FROM inventory_items WHERE costReconciled = 0 ORDER BY updatedAt DESC")
+    fun getUnreconciledItems(): Flow<List<InventoryItem>>
+
+    @Query("SELECT COUNT(*) FROM inventory_items WHERE costReconciled = 0")
+    fun getUnreconciledItemsCount(): Flow<Long>
+
+    @Query(
+        "UPDATE inventory_items SET costPrice = :costPrice, costReconciled = 1, " +
+                "pendingSync = 1 WHERE id = :itemId"
+    )
+    suspend fun reconcileItemCost(itemId: String, costPrice: Double)
+
     // ── Sync (InventoryItem) ─────────────────────────────────────
     @Query("SELECT * FROM inventory_items WHERE pendingSync = 1")
     suspend fun getPendingSyncItems(): List<InventoryItem>

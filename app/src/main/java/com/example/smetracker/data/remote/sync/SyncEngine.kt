@@ -155,7 +155,7 @@ class SyncEngine(
         pushPendingCustomers(businessId)
         pushPendingSales(businessId, myPhone, role)
         pushPendingDebts(businessId, myPhone)
-        pushPendingInventoryItems(businessId, role)
+        pushPendingInventoryItems(businessId, myPhone, role)
         pushPendingStockAdjustments(businessId, myPhone)
         pushPendingExpenses(businessId, myPhone, role)
         pushPendingTasks(businessId)
@@ -224,6 +224,16 @@ class SyncEngine(
                         // RemoteSale never carries costPrice/profit — preserve whatever
                         // the saleFinancials listener already merged in (or hasn't yet).
                         val existing = smeDao.getSaleById(remote.id)
+                        // existing == null means this sale is new to this device, i.e.
+                        // it came from somewhere else (another team member). If that's
+                        // true and it's tied to a tracked inventory item, its financials
+                        // are unreviewed until an owner explicitly reconciles them (see
+                        // the Reconciliation screen) — a device that creates its own
+                        // sale already has it in Room before this listener ever fires,
+                        // so `existing` won't be null for that case, and this branch is
+                        // never reached for sales you recorded yourself.
+                        val financialsReconciled = existing?.financialsReconciled
+                            ?: (remote.inventoryItemId == null)
                         smeDao.insertSale(
                             Sale(
                                 id = remote.id,
@@ -238,6 +248,8 @@ class SyncEngine(
                                 date = remote.date,
                                 paymentMethod = runCatching { PaymentMethod.valueOf(remote.paymentMethod) }
                                     .getOrDefault(PaymentMethod.CASH),
+                                recordedBy = remote.recordedBy,
+                                financialsReconciled = financialsReconciled,
                                 pendingSync = false
                             )
                         )
@@ -281,7 +293,13 @@ class SyncEngine(
                             quantity = sale.quantity,
                             date = sale.date,
                             paymentMethod = sale.paymentMethod.name,
-                            recordedBy = myPhone
+                            // A blank local recordedBy means this row was just created
+                            // on this device and never round-tripped yet — fill in
+                            // myPhone. A non-blank value (e.g. after an owner
+                            // reconciles a worker's sale, which re-marks it
+                            // pendingSync) is the ORIGINAL creator and must be kept,
+                            // not overwritten with whoever is pushing right now.
+                            recordedBy = sale.recordedBy.ifBlank { myPhone }
                         )
                     ).await()
 
@@ -370,6 +388,11 @@ class SyncEngine(
                         // RemoteInventoryItem never carries costPrice — preserve
                         // whatever's locally known (see updateItemCostPrice).
                         val existing = inventoryDao.getItemById(remote.id)
+                        // Same reasoning as attachSaleListener's financialsReconciled:
+                        // existing == null means this item is new to this device (came
+                        // from someone else's device), so its cost is still the unset
+                        // default and needs an owner's review.
+                        val costReconciled = existing?.costReconciled ?: false
                         inventoryDao.insert(
                             InventoryItem(
                                 id = remote.id,
@@ -380,6 +403,8 @@ class SyncEngine(
                                 costPrice = existing?.costPrice ?: 0.0,
                                 sellingPrice = remote.sellingPrice,
                                 updatedAt = remote.updatedAt,
+                                recordedBy = remote.recordedBy,
+                                costReconciled = costReconciled,
                                 pendingSync = false
                             )
                         )
@@ -402,7 +427,7 @@ class SyncEngine(
             }
     }
 
-    private suspend fun pushPendingInventoryItems(businessId: String, role: MemberRole) {
+    private suspend fun pushPendingInventoryItems(businessId: String, myPhone: String, role: MemberRole) {
         val businessRef = firestore.collection("businesses").document(businessId)
         val pending = inventoryDao.getPendingSyncItems()
         for (item in pending) {
@@ -416,7 +441,12 @@ class SyncEngine(
                             quantity = item.quantity,
                             reorderLevel = item.reorderLevel,
                             sellingPrice = item.sellingPrice,
-                            updatedAt = item.updatedAt
+                            updatedAt = item.updatedAt,
+                            // Same reasoning as pushPendingSales' recordedBy — keep the
+                            // original creator across re-pushes (e.g. after an owner
+                            // reconciles the cost), only fill in myPhone for a
+                            // brand-new local-only row.
+                            recordedBy = item.recordedBy.ifBlank { myPhone }
                         )
                     ).await()
 

@@ -68,6 +68,22 @@ fun DashboardScreen(
                         }
                     }
                     if (isOwner) {
+                        val unreconciledCount by viewModel.unreconciledCount.collectAsState()
+                        IconButton(onClick = { navController.navigate(Screen.Reconciliation.route) }) {
+                            BadgedBox(badge = {
+                                if (unreconciledCount > 0) {
+                                    Badge { Text(unreconciledCount.toString()) }
+                                }
+                            }) {
+                                Icon(
+                                    Icons.Default.PriceCheck,
+                                    contentDescription = "Reconciliation",
+                                    tint = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
+                    }
+                    if (isOwner) {
                         IconButton(onClick = onAddWorker) {
                             Icon(
                                 Icons.Default.PersonAdd,

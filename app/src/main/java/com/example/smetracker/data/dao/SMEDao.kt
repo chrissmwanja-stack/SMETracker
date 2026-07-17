@@ -33,6 +33,22 @@ interface SMEDao {
     @Delete
     suspend fun deleteSale(sale: Sale)
 
+    // ── Reconciliation (Sale) ───────────────────────────────────
+    // Owner-only queries backing the Reconciliation screen — surfaces sales
+    // (almost always worker-recorded, tied to a tracked inventory item)
+    // whose costPriceSnapshot/profit an owner hasn't reviewed yet.
+    @Query("SELECT * FROM sales WHERE financialsReconciled = 0 ORDER BY date DESC")
+    fun getUnreconciledSales(): Flow<List<Sale>>
+
+    @Query("SELECT COUNT(*) FROM sales WHERE financialsReconciled = 0")
+    fun getUnreconciledSalesCount(): Flow<Long>
+
+    @Query(
+        "UPDATE sales SET costPriceSnapshot = :costPriceSnapshot, profit = :profit, " +
+                "financialsReconciled = 1, pendingSync = 1 WHERE id = :saleId"
+    )
+    suspend fun reconcileSaleFinancials(saleId: String, costPriceSnapshot: Double, profit: Double)
+
     // ── Sync (Sale) ──────────────────────────────────────────────
     @Query("SELECT * FROM sales WHERE pendingSync = 1")
     suspend fun getPendingSyncSales(): List<Sale>
