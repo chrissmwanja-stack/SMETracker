@@ -10,6 +10,15 @@ class BusinessRepository(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
 
+    // Single source of truth for the Firestore role vocabulary. MemberRole's
+    // enum constant names ARE "OWNER"/"WORKER" by construction — using
+    // .name here instead of string literals means a typo like "Owner" is a
+    // compile error, not a silent bad write. Every role field written to
+    // Firestore in this class should go through these two constants, never
+    // a raw string.
+    private val ROLE_OWNER = MemberRole.OWNER.name
+    private val ROLE_WORKER = MemberRole.WORKER.name
+
     /**
      * First-time setup: the currently-signed-in phone number becomes the
      * owner of a brand new business.
@@ -70,8 +79,9 @@ class BusinessRepository(
                         "businessId" to businessId,
                         // Must be uppercase — firestore.rules' phoneIndex Case 1
                         // create rule checks request.resource.data.role == 'OWNER'
-                        // as an exact string match.
-                        "role" to "OWNER"
+                        // as an exact string match. Derived from MemberRole.OWNER.name,
+                        // not typed by hand, so it can't drift.
+                        "role" to ROLE_OWNER
                     )
                 ).await()
             } catch (e: Exception) {
@@ -88,7 +98,7 @@ class BusinessRepository(
                         // vocabulary ('OWNER'/'WORKER'), even though this
                         // particular field isn't value-checked by the members
                         // create rule today.
-                        "role" to "OWNER",
+                        "role" to ROLE_OWNER,
                         "name" to ownerName,
                         "addedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                     )
@@ -134,7 +144,7 @@ class BusinessRepository(
             val myIndexSnap = firestore.collection("phoneIndex").document(myPhone).get().await()
             val myBusinessId = myIndexSnap.getString("businessId")
             val myRole = myIndexSnap.getString("role")
-            if (myRole != "OWNER" || myBusinessId != businessId) {
+            if (myRole != ROLE_OWNER || myBusinessId != businessId) {
                 return Result.failure(
                     IllegalStateException(
                         "You're no longer the owner of this business (or the app's cached " +
@@ -149,7 +159,7 @@ class BusinessRepository(
 
             firestore.runTransaction { txn ->
                 txn.set(memberRef, mapOf(
-                    "role" to "WORKER",
+                    "role" to ROLE_WORKER,
                     "name" to workerName,
                     "addedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                 ))
@@ -162,7 +172,7 @@ class BusinessRepository(
                 // catching it via a pre-check.
                 txn.set(phoneIndexRef, mapOf(
                     "businessId" to businessId,
-                    "role" to "WORKER"
+                    "role" to ROLE_WORKER
                 ))
             }.await()
 
