@@ -141,11 +141,12 @@ class AuthViewModel(
         _screenState.value = AuthScreenState.EnterPhone
     }
 
-    fun signOut() {
+    fun signOut(onComplete: () -> Unit = {}) {
         authRepository.signOut()
         viewModelScope.launch {
             sessionManager.clearSession()
             _screenState.value = AuthScreenState.EnterPhone
+            onComplete()
         }
     }
 }

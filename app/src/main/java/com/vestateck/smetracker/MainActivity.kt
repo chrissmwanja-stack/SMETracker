@@ -126,9 +126,19 @@ class MainActivity : ComponentActivity() {
                                     viewModel = viewModel,
                                     navController = navController,
                                     onSignOut = {
-                                        authViewModel.signOut()
-                                        syncEngine.stop()
-                                        entered = null
+                                        // AuthNavGate re-collects sessionManager.sessionState
+                                        // fresh the instant `entered` goes null. clearSession()
+                                        // is an async DataStore write (real disk I/O) — flipping
+                                        // `entered` before it lands meant the first read AuthNavGate
+                                        // did could still see the old logged-in session and bounce
+                                        // straight back into the app, so sign-out silently no-op'd
+                                        // on the first tap and only "worked" the second time, once
+                                        // the first attempt's write had actually landed. Waiting for
+                                        // signOut()'s completion callback closes that race.
+                                        authViewModel.signOut {
+                                            syncEngine.stop()
+                                            entered = null
+                                        }
                                     },
                                     isOwner = currentEntry.second == MemberRole.OWNER,
                                     onAddWorker = { navController.navigate(Screen.AddWorker.route) }
