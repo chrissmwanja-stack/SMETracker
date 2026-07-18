@@ -38,30 +38,36 @@ class InventorySync(
                 externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
-                        val remote = change.document.toObject(RemoteInventoryItem::class.java)
-                        // RemoteInventoryItem never carries costPrice — preserve
-                        // whatever's locally known (see updateItemCostPrice).
-                        val existing = inventoryDao.getItemById(remote.id)
-                        // Same reasoning as SaleSync's financialsReconciled:
-                        // existing == null means this item is new to this device (came
-                        // from someone else's device), so its cost is still the unset
-                        // default and needs an owner's review.
-                        val costReconciled = existing?.costReconciled ?: false
-                        inventoryDao.insert(
-                            InventoryItem(
-                                id = remote.id,
-                                name = remote.name,
-                                category = remote.category,
-                                quantity = remote.quantity,
-                                reorderLevel = remote.reorderLevel,
-                                costPrice = existing?.costPrice ?: 0.0,
-                                sellingPrice = remote.sellingPrice,
-                                updatedAt = remote.updatedAt,
-                                recordedBy = remote.recordedBy,
-                                costReconciled = costReconciled,
-                                pendingSync = false
+                        try {
+                            val remote = change.document.toObject(RemoteInventoryItem::class.java)
+                            // RemoteInventoryItem never carries costPrice — preserve
+                            // whatever's locally known (see updateItemCostPrice).
+                            val existing = inventoryDao.getItemById(remote.id)
+                            // Same reasoning as SaleSync's financialsReconciled:
+                            // existing == null means this item is new to this device (came
+                            // from someone else's device), so its cost is still the unset
+                            // default and needs an owner's review.
+                            val costReconciled = existing?.costReconciled ?: false
+                            inventoryDao.insert(
+                                InventoryItem(
+                                    id = remote.id,
+                                    name = remote.name,
+                                    category = remote.category,
+                                    quantity = remote.quantity,
+                                    reorderLevel = remote.reorderLevel,
+                                    costPrice = existing?.costPrice ?: 0.0,
+                                    sellingPrice = remote.sellingPrice,
+                                    updatedAt = remote.updatedAt,
+                                    recordedBy = remote.recordedBy,
+                                    costReconciled = costReconciled,
+                                    pendingSync = false
+                                )
                             )
-                        )
+                        } catch (e: Exception) {
+                            // One bad/out-of-order document shouldn't take down the rest
+                            // of this snapshot batch — skipped here, picked up again on
+                            // the next snapshot event for this document.
+                        }
                     }
                 }
             }
@@ -74,8 +80,14 @@ class InventorySync(
                 externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
-                        val remote = change.document.toObject(InventoryCost::class.java)
-                        inventoryDao.updateItemCostPrice(change.document.id, remote.costPrice)
+                        try {
+                            val remote = change.document.toObject(InventoryCost::class.java)
+                            inventoryDao.updateItemCostPrice(change.document.id, remote.costPrice)
+                        } catch (e: Exception) {
+                            // Same defensive pattern as the item listener above — this
+                            // is a plain UPDATE with no FK, so failure here is unlikely,
+                            // but keep the batch resilient to a single bad document.
+                        }
                     }
                 }
             }

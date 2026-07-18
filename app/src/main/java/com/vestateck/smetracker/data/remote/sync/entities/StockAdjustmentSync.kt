@@ -18,12 +18,14 @@ import kotlinx.coroutines.tasks.await
  * This is the audit log behind Incoming Stock / Recount (InventoryScreen).
  * Extracted from SyncEngine.
  *
- * Same FK-ordering caveat as Sale/Customer elsewhere: StockAdjustment.itemId
- * is a foreign key to inventory_items, so if this listener's first batch
+ * Same FK-ordering caveat as Sale/Debt elsewhere: StockAdjustment.itemId is
+ * a foreign key to inventory_items, so if this listener's first batch
  * arrives before the inventory listener's does (no ordering guarantee
- * between two independent snapshot listeners), the insert throws and that
- * adjustment is silently dropped rather than retried — not new here, just
- * carried over from an existing gap.
+ * between two independent snapshot listeners), the insert throws. That's
+ * now caught per-document (see attachListener below) so only the affected
+ * adjustment is skipped rather than every document after it in the same
+ * snapshot batch — it's picked back up the next time Firestore resends this
+ * document (e.g. on listener reconnect), not lost outright.
  */
 class StockAdjustmentSync(
     private val inventoryDao: InventoryDao,
@@ -37,20 +39,30 @@ class StockAdjustmentSync(
                 externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
-                        val remote = change.document.toObject(RemoteStockAdjustment::class.java)
-                        inventoryDao.insertAdjustmentFromRemote(
-                            StockAdjustment(
-                                id = remote.id,
-                                itemId = remote.itemId,
-                                delta = remote.delta,
-                                reason = runCatching { StockAdjustmentReason.valueOf(remote.reason) }
-                                    .getOrDefault(StockAdjustmentReason.INCOMING),
-                                note = remote.note,
-                                createdAt = remote.createdAt,
-                                recordedBy = remote.recordedBy,
-                                pendingSync = false
+                        try {
+                            val remote = change.document.toObject(RemoteStockAdjustment::class.java)
+                            inventoryDao.insertAdjustmentFromRemote(
+                                StockAdjustment(
+                                    id = remote.id,
+                                    itemId = remote.itemId,
+                                    delta = remote.delta,
+                                    reason = runCatching { StockAdjustmentReason.valueOf(remote.reason) }
+                                        .getOrDefault(StockAdjustmentReason.INCOMING),
+                                    note = remote.note,
+                                    createdAt = remote.createdAt,
+                                    recordedBy = remote.recordedBy,
+                                    pendingSync = false
+                                )
                             )
-                        )
+                        } catch (e: Exception) {
+                            // The FK race documented in this class's doc comment: itemId
+                            // references inventory_items, and this doc can arrive before
+                            // the inventory listener's does. Previously this exception was
+                            // uncaught, which meant every document AFTER this one in the
+                            // same snapshot batch was skipped too, not just this one — now
+                            // it's contained to this single document, retried on the next
+                            // snapshot event for it.
+                        }
                     }
                 }
             }

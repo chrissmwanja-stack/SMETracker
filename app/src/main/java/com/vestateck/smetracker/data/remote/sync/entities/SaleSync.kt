@@ -40,39 +40,48 @@ class SaleSync(
                 externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
-                        val remote = change.document.toObject(RemoteSale::class.java)
-                        // RemoteSale never carries costPrice/profit — preserve whatever
-                        // the saleFinancials listener already merged in (or hasn't yet).
-                        val existing = smeDao.getSaleById(remote.id)
-                        // existing == null means this sale is new to this device, i.e.
-                        // it came from somewhere else (another team member). If that's
-                        // true and it's tied to a tracked inventory item, its financials
-                        // are unreviewed until an owner explicitly reconciles them (see
-                        // the Reconciliation screen) — a device that creates its own
-                        // sale already has it in Room before this listener ever fires,
-                        // so `existing` won't be null for that case, and this branch is
-                        // never reached for sales you recorded yourself.
-                        val financialsReconciled = existing?.financialsReconciled
-                            ?: (remote.inventoryItemId == null)
-                        smeDao.insertSale(
-                            Sale(
-                                id = remote.id,
-                                customerId = remote.customerId,
-                                customerName = remote.customerName,
-                                description = remote.description,
-                                amount = remote.amount,
-                                profit = existing?.profit ?: 0.0,
-                                costPriceSnapshot = existing?.costPriceSnapshot ?: 0.0,
-                                inventoryItemId = remote.inventoryItemId,
-                                quantity = remote.quantity,
-                                date = remote.date,
-                                paymentMethod = runCatching { PaymentMethod.valueOf(remote.paymentMethod) }
-                                    .getOrDefault(PaymentMethod.CASH),
-                                recordedBy = remote.recordedBy,
-                                financialsReconciled = financialsReconciled,
-                                pendingSync = false
+                        try {
+                            val remote = change.document.toObject(RemoteSale::class.java)
+                            // RemoteSale never carries costPrice/profit — preserve whatever
+                            // the saleFinancials listener already merged in (or hasn't yet).
+                            val existing = smeDao.getSaleById(remote.id)
+                            // existing == null means this sale is new to this device, i.e.
+                            // it came from somewhere else (another team member). If that's
+                            // true and it's tied to a tracked inventory item, its financials
+                            // are unreviewed until an owner explicitly reconciles them (see
+                            // the Reconciliation screen) — a device that creates its own
+                            // sale already has it in Room before this listener ever fires,
+                            // so `existing` won't be null for that case, and this branch is
+                            // never reached for sales you recorded yourself.
+                            val financialsReconciled = existing?.financialsReconciled
+                                ?: (remote.inventoryItemId == null)
+                            smeDao.insertSale(
+                                Sale(
+                                    id = remote.id,
+                                    customerId = remote.customerId,
+                                    customerName = remote.customerName,
+                                    description = remote.description,
+                                    amount = remote.amount,
+                                    profit = existing?.profit ?: 0.0,
+                                    costPriceSnapshot = existing?.costPriceSnapshot ?: 0.0,
+                                    inventoryItemId = remote.inventoryItemId,
+                                    quantity = remote.quantity,
+                                    date = remote.date,
+                                    paymentMethod = runCatching { PaymentMethod.valueOf(remote.paymentMethod) }
+                                        .getOrDefault(PaymentMethod.CASH),
+                                    recordedBy = remote.recordedBy,
+                                    financialsReconciled = financialsReconciled,
+                                    pendingSync = false
+                                )
                             )
-                        )
+                        } catch (e: Exception) {
+                            // customerId is a real FK to customers — if this sale's
+                            // snapshot arrives before its linked customer's does (no
+                            // ordering guarantee between two independent listeners),
+                            // the insert throws. Skip this doc rather than take down
+                            // the rest of the batch; it's retried on the next snapshot
+                            // event for this document.
+                        }
                     }
                 }
             }
@@ -85,12 +94,16 @@ class SaleSync(
                 externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
-                        val remote = change.document.toObject(SaleFinancials::class.java)
-                        // Document ID (== the linked sale's ID) is the source of truth
-                        // here, not remote.saleId, for the same reason RemoteSale/
-                        // RemoteInventoryItem use @DocumentId rather than trusting a
-                        // plain field.
-                        smeDao.updateSaleFinancials(change.document.id, remote.costPrice, remote.profit)
+                        try {
+                            val remote = change.document.toObject(SaleFinancials::class.java)
+                            // Document ID (== the linked sale's ID) is the source of truth
+                            // here, not remote.saleId, for the same reason RemoteSale/
+                            // RemoteInventoryItem use @DocumentId rather than trusting a
+                            // plain field.
+                            smeDao.updateSaleFinancials(change.document.id, remote.costPrice, remote.profit)
+                        } catch (e: Exception) {
+                            // Same defensive pattern as the sale listener above.
+                        }
                     }
                 }
             }

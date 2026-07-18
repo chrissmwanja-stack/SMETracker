@@ -28,20 +28,25 @@ class TaskSync(
                 externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
-                        val remote = change.document.toObject(RemoteTask::class.java)
-                        smeDao.insertTask(
-                            Task(
-                                id = remote.id,
-                                title = remote.title,
-                                description = remote.description,
-                                priority = remote.priority,
-                                dueDate = remote.dueDate,
-                                isCompleted = remote.isCompleted,
-                                completedDate = remote.completedDate,
-                                createdDate = remote.createdDate,
-                                pendingSync = false
+                        try {
+                            val remote = change.document.toObject(RemoteTask::class.java)
+                            smeDao.insertTask(
+                                Task(
+                                    id = remote.id,
+                                    title = remote.title,
+                                    description = remote.description,
+                                    priority = remote.priority,
+                                    dueDate = remote.dueDate,
+                                    isCompleted = remote.isCompleted,
+                                    completedDate = remote.completedDate,
+                                    createdDate = remote.createdDate,
+                                    pendingSync = false
+                                )
                             )
-                        )
+                        } catch (e: Exception) {
+                            // No FK on Task today, but same defensive pattern as the
+                            // other *Sync listeners.
+                        }
                     }
                 }
             }
