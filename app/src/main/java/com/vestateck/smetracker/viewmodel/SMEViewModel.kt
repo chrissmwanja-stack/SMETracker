@@ -245,7 +245,12 @@ class SMEViewModel(
         amount: Double,
         paymentMethod: PaymentMethod,
         inventoryItemId: String? = null,
-        quantity: Int = 1
+        quantity: Int = 1,
+        // Set when the customer was picked from the saved-customers dropdown
+        // rather than typed as a one-off name — links this sale back to that
+        // Customer record. Null is a legitimate, common case (ad-hoc/walk-in
+        // sale with no saved customer), not an error.
+        customerId: String? = null
     ) = viewModelScope.launch {
         val soldItem = inventoryItemId?.let { id -> inventoryItems.value.find { it.id == id } }
         // Defense-in-depth behind AddSaleScreen's own stock check: reject
@@ -269,6 +274,7 @@ class SMEViewModel(
 
         repository.insertSale(
             Sale(
+                customerId = customerId,
                 customerName = customerName,
                 description = description,
                 amount = amount,
