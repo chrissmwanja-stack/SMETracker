@@ -199,6 +199,27 @@ class SMEViewModel(
         repository.deleteInventoryItem(item)
     }
 
+    // Testing convenience — inserts a small set of sample products so a
+    // fresh sign-up/device has something to sell/reconcile against right
+    // away instead of starting from an empty inventory. Idempotent: no-ops
+    // if inventory already has anything, so it's safe if the button behind
+    // this gets tapped twice or the screen recomposes. Owner-only in the UI
+    // (see DashboardScreen) since it inserts already-reconciled items with
+    // real cost prices, same as any other owner-entered item.
+    fun seedDemoProducts() = viewModelScope.launch {
+        if (inventoryItems.value.isNotEmpty()) return@launch
+        val (myPhone, _) = currentSession()
+        listOf(
+            InventoryItem(name = "Bar Soap", category = "Household", quantity = 40, reorderLevel = 10, costPrice = 2500.0, sellingPrice = 3500.0, recordedBy = myPhone, costReconciled = true),
+            InventoryItem(name = "Sugar 1kg", category = "Groceries", quantity = 30, reorderLevel = 8, costPrice = 3800.0, sellingPrice = 4500.0, recordedBy = myPhone, costReconciled = true),
+            InventoryItem(name = "Cooking Oil 1L", category = "Groceries", quantity = 20, reorderLevel = 5, costPrice = 8000.0, sellingPrice = 9500.0, recordedBy = myPhone, costReconciled = true),
+            InventoryItem(name = "Airtime Scratch Card", category = "Airtime", quantity = 100, reorderLevel = 20, costPrice = 950.0, sellingPrice = 1000.0, recordedBy = myPhone, costReconciled = true),
+            InventoryItem(name = "Exercise Book", category = "Stationery", quantity = 60, reorderLevel = 15, costPrice = 800.0, sellingPrice = 1200.0, recordedBy = myPhone, costReconciled = true),
+            InventoryItem(name = "Bread Loaf", category = "Bakery", quantity = 15, reorderLevel = 5, costPrice = 2800.0, sellingPrice = 3500.0, recordedBy = myPhone, costReconciled = true)
+        ).forEach { repository.insertInventoryItem(it) }
+        syncEngine?.requestPush()
+    }
+
     fun getAdjustmentsForItem(itemId: String) = repository.getAdjustmentsForItem(itemId)
 
     // Incoming Stock — additive-only, available to workers and owners alike.

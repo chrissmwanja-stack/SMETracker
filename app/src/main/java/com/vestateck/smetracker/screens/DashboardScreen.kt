@@ -65,6 +65,15 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
+                    if (isOwner && uiState.inventoryItems.isEmpty()) {
+                        IconButton(onClick = { viewModel.seedDemoProducts() }) {
+                            Icon(
+                                Icons.Default.Inventory2,
+                                contentDescription = "Seed demo products",
+                                tint = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    }
                     if (isOwner) {
                         IconButton(onClick = { navController.navigate(Screen.Reports.route) }) {
                             Icon(
