@@ -27,5 +27,30 @@ data class InventoryItem(
     // InventoryScreen's InventoryItemDialog) — it's always 0 until an owner
     // sets a real one.
     @ColumnInfo(defaultValue = "1") val costReconciled: Boolean = true,
+    // Photo of the physical item (e.g. a boutique's cloth print) — optional,
+    // any item can go without one. Two separate fields rather than one,
+    // because "have a photo" and "have it backed up to the cloud" are
+    // different states that don't always agree:
+    //   - localImagePath: absolute path to a resized JPEG copy in this
+    //     device's internal storage (see ImageUtils.copyToInternalStorage).
+    //     Always preferred for display when present — works offline, no
+    //     network fetch. Null means this device has no local copy, either
+    //     because no photo was ever set, or because this item/photo came
+    //     from another device via sync (see InventorySync's pull listener).
+    //   - imageUrl: the Firebase Storage download URL, set only after a
+    //     local photo has actually finished uploading. This is what lets
+    //     OTHER devices show the photo — they'll never have a
+    //     localImagePath for it, only this. Falls back to display here when
+    //     localImagePath is null.
+    @ColumnInfo(defaultValue = "NULL") val localImagePath: String? = null,
+    @ColumnInfo(defaultValue = "NULL") val imageUrl: String? = null,
+    // True from the moment a new local photo is picked until InventorySync
+    // has successfully uploaded it and recorded the resulting imageUrl —
+    // mirrors pendingSync but specifically for the upload half, since a
+    // photo can be picked offline while the rest of the item edit pushes
+    // fine, or the photo can simply be large and take longer than the rest
+    // of the sync. Also what tells pushPending "re-upload", vs. "already
+    // uploaded, don't repeat the bandwidth cost" on every unrelated edit.
+    @ColumnInfo(defaultValue = "0") val imagePendingUpload: Boolean = false,
     val pendingSync: Boolean = true
 )

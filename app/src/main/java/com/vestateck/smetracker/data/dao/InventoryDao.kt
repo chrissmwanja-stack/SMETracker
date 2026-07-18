@@ -94,4 +94,14 @@ interface InventoryDao {
     // matching what the security rules already deny them).
     @Query("UPDATE inventory_items SET costPrice = :costPrice WHERE id = :itemId")
     suspend fun updateItemCostPrice(itemId: String, costPrice: Double)
+
+    // Called by InventorySync after a picked photo finishes uploading to
+    // Firebase Storage — records the resulting download URL and clears the
+    // upload-pending flag so pushPending() doesn't re-upload the same file
+    // on the item's next unrelated edit.
+    @Query(
+        "UPDATE inventory_items SET imageUrl = :imageUrl, imagePendingUpload = 0 " +
+                "WHERE id = :itemId"
+    )
+    suspend fun markImageUploaded(itemId: String, imageUrl: String)
 }

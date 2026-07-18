@@ -340,57 +340,76 @@ private fun SaleLineItemCard(
                 singleLine = true
             )
 
-            ExposedDropdownMenuBox(
-                expanded = itemExpanded,
-                onExpandedChange = { itemExpanded = it }
-            ) {
-                OutlinedTextField(
-                    value = line.selectedItem?.name ?: "Custom / service sale",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Inventory Item") },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
-                )
-                ExposedDropdownMenu(
-                    expanded = itemExpanded,
-                    onDismissRequest = { itemExpanded = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Custom / service sale") },
-                        onClick = {
-                            onChange(line.copy(selectedItem = null, amountManuallyEdited = false))
-                            itemExpanded = false
-                        }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                if (line.selectedItem != null) {
+                    InventoryThumbnail(
+                        localImagePath = line.selectedItem.localImagePath,
+                        imageUrl = line.selectedItem.imageUrl,
+                        size = 40.dp
                     )
-                    inventoryItems.forEach { item ->
-                        val usedElsewhere = itemAlreadyUsedElsewhere(item)
+                    Spacer(Modifier.width(8.dp))
+                }
+                ExposedDropdownMenuBox(
+                    expanded = itemExpanded,
+                    onExpandedChange = { itemExpanded = it },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    OutlinedTextField(
+                        value = line.selectedItem?.name ?: "Custom / service sale",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Inventory Item") },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = itemExpanded,
+                        onDismissRequest = { itemExpanded = false }
+                    ) {
                         DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text(item.name)
-                                    Text(
-                                        if (usedElsewhere) "Already added to this sale — adjust its quantity instead"
-                                        else "${item.quantity} in stock · ${CurrencyUtils.formatUgx(item.sellingPrice)}",
-                                        fontSize = 12.sp,
-                                        color = if (usedElsewhere) MaterialTheme.colorScheme.error
-                                        else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            },
-                            enabled = item.quantity > 0 && !usedElsewhere,
+                            text = { Text("Custom / service sale") },
                             onClick = {
-                                val qty = line.quantityInput.toIntOrNull() ?: 1
-                                onChange(
-                                    line.copy(
-                                        selectedItem = item,
-                                        description = line.description.ifBlank { item.name },
-                                        amount = suggestedAmount(item, qty),
-                                        amountManuallyEdited = false
-                                    )
-                                )
+                                onChange(line.copy(selectedItem = null, amountManuallyEdited = false))
                                 itemExpanded = false
                             }
                         )
+                        inventoryItems.forEach { item ->
+                            val usedElsewhere = itemAlreadyUsedElsewhere(item)
+                            DropdownMenuItem(
+                                leadingIcon = {
+                                    InventoryThumbnail(
+                                        localImagePath = item.localImagePath,
+                                        imageUrl = item.imageUrl,
+                                        outOfStock = item.quantity == 0,
+                                        size = 36.dp
+                                    )
+                                },
+                                text = {
+                                    Column {
+                                        Text(item.name)
+                                        Text(
+                                            if (usedElsewhere) "Already added to this sale — adjust its quantity instead"
+                                            else "${item.quantity} in stock · ${CurrencyUtils.formatUgx(item.sellingPrice)}",
+                                            fontSize = 12.sp,
+                                            color = if (usedElsewhere) MaterialTheme.colorScheme.error
+                                            else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                enabled = item.quantity > 0 && !usedElsewhere,
+                                onClick = {
+                                    val qty = line.quantityInput.toIntOrNull() ?: 1
+                                    onChange(
+                                        line.copy(
+                                            selectedItem = item,
+                                            description = line.description.ifBlank { item.name },
+                                            amount = suggestedAmount(item, qty),
+                                            amountManuallyEdited = false
+                                        )
+                                    )
+                                    itemExpanded = false
+                                }
+                            )
+                        }
                     }
                 }
             }

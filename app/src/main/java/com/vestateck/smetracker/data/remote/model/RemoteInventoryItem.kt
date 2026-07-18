@@ -17,5 +17,10 @@ data class RemoteInventoryItem(
     // Phone number (E.164) of whoever created this item — mirrors
     // RemoteSale.recordedBy. Used by an owner's device to know whose items
     // need a cost review; see SyncEngine and the Reconciliation screen.
-    val recordedBy: String = ""
+    val recordedBy: String = "",
+    // Firebase Storage download URL — blank means no photo has been
+    // uploaded for this item yet. See InventorySync.pushPending for the
+    // upload step and InventoryItem's doc comment for why this is separate
+    // from the local device's cached copy.
+    val imageUrl: String = ""
 )

@@ -22,7 +22,7 @@ import com.vestateck.smetracker.data.entities.Task
 
 @Database(
     entities = [Sale::class, Customer::class, Debt::class, InventoryItem::class, Expense::class, Task::class, StockAdjustment::class],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -105,6 +105,19 @@ abstract class SMEDatabase : RoomDatabase() {
             }
         }
 
+        // v10 -> v11: InventoryItem gained localImagePath, imageUrl, and
+        // imagePendingUpload — backs the optional item photo (e.g. a
+        // boutique photographing each cloth print). All three default to
+        // NULL/0 (no photo), so existing items are unaffected until someone
+        // deliberately adds a picture via InventoryItemDialog.
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE inventory_items ADD COLUMN localImagePath TEXT")
+                db.execSQL("ALTER TABLE inventory_items ADD COLUMN imageUrl TEXT")
+                db.execSQL("ALTER TABLE inventory_items ADD COLUMN imagePendingUpload INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getDatabase(context: Context): SMEDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -112,7 +125,7 @@ abstract class SMEDatabase : RoomDatabase() {
                     SMEDatabase::class.java,
                     "sme_tracker_database"
                 )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_9_10, MIGRATION_10_11)
                     // Safety net for older installs with no migration path defined (v1-v4).
                     // Any new schema change from here on should get its own Migration above
                     // instead of relying on this, or existing user data will be wiped on upgrade.

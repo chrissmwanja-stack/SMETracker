@@ -1,5 +1,11 @@
 package com.vestateck.smetracker.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,14 +18,23 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
+import coil3.compose.AsyncImage
 import com.vestateck.smetracker.data.entities.InventoryItem
+import com.vestateck.smetracker.utils.ImageUtils
 import com.vestateck.smetracker.viewmodel.SMEViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -89,7 +104,10 @@ fun InventoryScreen(viewModel: SMEViewModel, navController: NavController, isOwn
                             selectedItem = item
                             showDialog = true
                         },
-                        onDelete = { viewModel.deleteInventoryItem(item) },
+                        onDelete = {
+                            ImageUtils.deleteLocalCopy(item.localImagePath)
+                            viewModel.deleteInventoryItem(item)
+                        },
                         onReceiveStock = { qty, note -> viewModel.receiveStock(item.id, qty, note) },
                         onRecount = { newQty, note -> viewModel.recountStock(item.id, newQty, note) }
                     )
@@ -109,6 +127,54 @@ fun InventoryScreen(viewModel: SMEViewModel, navController: NavController, isOwn
                 showDialog = false
             }
         )
+    }
+}
+
+@Composable
+fun InventoryThumbnail(
+    localImagePath: String?,
+    imageUrl: String?,
+    outOfStock: Boolean = false,
+    size: androidx.compose.ui.unit.Dp = 40.dp
+) {
+    // localImagePath (this device's own resized copy) is always preferred —
+    // no network round-trip, works offline. imageUrl (Firebase Storage) is
+    // the fallback for a device that's never had the local file, e.g. one
+    // that only ever pulled this item from Firestore. See InventoryItem's
+    // doc comment for the full reasoning.
+    val model: Any? = localImagePath ?: imageUrl?.takeIf { it.isNotBlank() }
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center
+    ) {
+        if (model != null) {
+            AsyncImage(
+                model = model,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Icon(
+                Icons.Default.Inventory2,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.size(size * 0.5f)
+            )
+        }
+        // Out-of-stock is already surfaced via the red "Qty: 0" text next to
+        // this thumbnail — this dims the photo itself so it reads at a
+        // glance in a scrolling list, without adding another text label.
+        if (outOfStock) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.45f))
+            )
+        }
     }
 }
 
@@ -133,6 +199,13 @@ private fun InventoryListItem(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                InventoryThumbnail(
+                    localImagePath = item.localImagePath,
+                    imageUrl = item.imageUrl,
+                    outOfStock = item.quantity == 0,
+                    size = 56.dp
+                )
+                Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(item.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Text(item.category, fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.Gray)
@@ -326,10 +399,77 @@ private fun InventoryItemDialog(
     var costPrice by remember { mutableStateOf(item?.costPrice?.toString() ?: "0") }
     var sellingPrice by remember { mutableStateOf(item?.sellingPrice?.toString() ?: "0") }
 
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var localImagePath by remember { mutableStateOf(item?.localImagePath) }
+    var imageUrl by remember { mutableStateOf(item?.imageUrl) }
+    var imagePendingUpload by remember { mutableStateOf(item?.imagePendingUpload ?: false) }
+    var isProcessingPhoto by remember { mutableStateOf(false) }
+
+    val pickPhoto = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        isProcessingPhoto = true
+        coroutineScope.launch {
+            val newPath = withContext(Dispatchers.IO) { ImageUtils.copyToInternalStorage(context, uri) }
+            if (newPath != null) {
+                // Replacing an existing photo — the old resized copy is this
+                // app's own file (never the original picked one), safe to
+                // delete now that nothing will point to it.
+                ImageUtils.deleteLocalCopy(localImagePath)
+                localImagePath = newPath
+                imageUrl = null // stale until the new photo re-uploads
+                imagePendingUpload = true
+            }
+            isProcessingPhoto = false
+        }
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(if (isNewItem) "Add Item" else "Edit Item", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clickable {
+                                pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            }
+                    ) {
+                        InventoryThumbnail(localImagePath = localImagePath, imageUrl = imageUrl, size = 64.dp)
+                        if (isProcessingPhoto) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.4f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = androidx.compose.ui.graphics.Color.White, strokeWidth = 2.dp)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        TextButton(onClick = {
+                            pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }) {
+                            Text(if (localImagePath == null && imageUrl.isNullOrBlank()) "Add photo" else "Change photo", fontSize = 13.sp)
+                        }
+                        if (localImagePath != null || !imageUrl.isNullOrBlank()) {
+                            TextButton(onClick = {
+                                ImageUtils.deleteLocalCopy(localImagePath)
+                                localImagePath = null
+                                imageUrl = null
+                                imagePendingUpload = false
+                            }) {
+                                Text("Remove photo", fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Item Name") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = category, onValueChange = { category = it }, label = { Text("Category") }, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -362,20 +502,25 @@ private fun InventoryItemDialog(
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text("Cancel") }
-                    Button(onClick = {
-                        onConfirm(
-                            InventoryItem(
-                                id = item?.id ?: "",
-                                name = name,
-                                category = category,
-                                quantity = quantity.toIntOrNull() ?: 0,
-                                reorderLevel = reorderLevel.toIntOrNull() ?: 0,
-                                costPrice = costPrice.toDoubleOrNull() ?: 0.0,
-                                sellingPrice = sellingPrice.toDoubleOrNull() ?: 0.0,
-                                updatedAt = System.currentTimeMillis()
+                    Button(
+                        enabled = !isProcessingPhoto,
+                        onClick = {
+                            onConfirm(
+                                InventoryItem(
+                                    id = item?.id ?: "",
+                                    name = name,
+                                    category = category,
+                                    quantity = quantity.toIntOrNull() ?: 0,
+                                    reorderLevel = reorderLevel.toIntOrNull() ?: 0,
+                                    costPrice = costPrice.toDoubleOrNull() ?: 0.0,
+                                    sellingPrice = sellingPrice.toDoubleOrNull() ?: 0.0,
+                                    updatedAt = System.currentTimeMillis(),
+                                    localImagePath = localImagePath,
+                                    imageUrl = imageUrl,
+                                    imagePendingUpload = imagePendingUpload
+                                )
                             )
-                        )
-                    }) { Text("Save") }
+                        }) { Text("Save") }
                 }
             }
         }

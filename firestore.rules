@@ -1,0 +1,159 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.phone_number != null;
+    }
+
+    function myPhone() {
+      return request.auth.token.phone_number;
+    }
+
+    function hasIndex() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/phoneIndex/$(myPhone()));
+    }
+
+    function isOwnerOf(businessId) {
+      let idx = get(/databases/$(database)/documents/phoneIndex/$(myPhone())).data;
+      return isSignedIn() && idx.role == 'OWNER' && idx.businessId == businessId;
+    }
+
+    function isWorkerOf(businessId) {
+      let idx = get(/databases/$(database)/documents/phoneIndex/$(myPhone())).data;
+      return isSignedIn() && idx.role == 'WORKER' && idx.businessId == businessId;
+    }
+
+    function isMemberOf(businessId) {
+      return isOwnerOf(businessId) || isWorkerOf(businessId);
+    }
+
+    match /phoneIndex/{phone} {
+      allow read: if isSignedIn() && myPhone() == phone;
+
+      allow create: if isSignedIn() && myPhone() == phone
+        && !hasIndex()
+        && request.resource.data.role == 'OWNER'
+        && get(/databases/$(database)/documents/businesses/$(request.resource.data.businessId)).data.ownerPhone == myPhone();
+
+      allow create: if isSignedIn() && phone != myPhone()
+        && isOwnerOf(request.resource.data.businessId)
+        && request.resource.data.role == 'WORKER'
+        && !exists(/databases/$(database)/documents/phoneIndex/$(phone));
+
+      allow delete: if isSignedIn() && phone != myPhone()
+        && isOwnerOf(resource.data.businessId);
+
+      allow update: if false;
+    }
+
+    match /businesses/{businessId} {
+      allow read: if isMemberOf(businessId);
+
+      allow create: if isSignedIn()
+        && request.resource.data.ownerPhone == myPhone()
+        && !hasIndex();
+
+      allow update: if isOwnerOf(businessId)
+        && request.resource.data.ownerPhone == resource.data.ownerPhone;
+
+      allow delete: if false;
+    }
+
+    match /businesses/{businessId}/members/{phone} {
+      allow read: if isMemberOf(businessId);
+      allow create, update: if isOwnerOf(businessId);
+      allow delete: if isOwnerOf(businessId);
+    }
+
+    match /businesses/{businessId}/sales/{saleId} {
+      allow read, create: if isMemberOf(businessId)
+        && (request.method != 'create' || request.resource.data.recordedBy == myPhone());
+
+      allow update: if isOwnerOf(businessId)
+        || (isWorkerOf(businessId)
+            && resource.data.recordedBy == myPhone()
+            && request.resource.data.recordedBy == myPhone());
+
+      allow delete: if isOwnerOf(businessId)
+        || (isWorkerOf(businessId) && resource.data.recordedBy == myPhone());
+    }
+
+    match /businesses/{businessId}/saleFinancials/{saleId} {
+      allow read, write: if isOwnerOf(businessId);
+    }
+
+    match /businesses/{businessId}/inventory/{itemId} {
+      allow read, create: if isMemberOf(businessId);
+
+      allow update: if isOwnerOf(businessId)
+        || (isWorkerOf(businessId) && request.resource.data.quantity >= resource.data.quantity);
+
+      allow delete: if isOwnerOf(businessId);
+    }
+
+    match /businesses/{businessId}/stockAdjustments/{adjustmentId} {
+      allow read: if isMemberOf(businessId);
+
+      allow create: if isMemberOf(businessId)
+        && request.resource.data.recordedBy == myPhone()
+        && (
+          isOwnerOf(businessId)
+          || (request.resource.data.reason == 'INCOMING' && request.resource.data.delta > 0)
+          || (request.resource.data.reason == 'SALE' && request.resource.data.delta < 0)
+        );
+
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /businesses/{businessId}/inventoryCosts/{itemId} {
+      allow read, write: if isOwnerOf(businessId);
+    }
+
+    match /businesses/{businessId}/customers/{customerId} {
+      allow read, create, update: if isMemberOf(businessId);
+      allow delete: if isOwnerOf(businessId);
+    }
+
+    match /businesses/{businessId}/debts/{debtId} {
+      allow read, create, update: if isMemberOf(businessId);
+      allow delete: if isOwnerOf(businessId);
+    }
+
+    match /businesses/{businessId}/expenses/{expenseId} {
+
+      allow read: if isOwnerOf(businessId)
+        || (isWorkerOf(businessId) && resource.data.recordedBy == myPhone());
+
+      allow create: if isMemberOf(businessId)
+        && request.resource.data.recordedBy == myPhone()
+        && (
+          isOwnerOf(businessId)
+          || (
+            request.resource.data.status == 'PENDING'
+            && request.resource.data.approvedBy == null
+            && request.resource.data.approvedAt == null
+          )
+        );
+
+      allow update: if isOwnerOf(businessId)
+        && request.resource.data.recordedBy == resource.data.recordedBy;
+
+      allow update: if isWorkerOf(businessId)
+        && resource.data.recordedBy == myPhone()
+        && resource.data.status == 'PENDING'
+        && request.resource.data.recordedBy == myPhone()
+        && request.resource.data.status == 'PENDING'
+        && request.resource.data.approvedBy == null
+        && request.resource.data.approvedAt == null;
+
+      allow delete: if isOwnerOf(businessId)
+        || (isWorkerOf(businessId)
+            && resource.data.recordedBy == myPhone()
+            && resource.data.status == 'PENDING');
+    }
+  }
+}

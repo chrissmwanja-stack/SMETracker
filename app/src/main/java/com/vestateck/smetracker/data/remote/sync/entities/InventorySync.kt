@@ -1,5 +1,6 @@
 package com.vestateck.smetracker.data.remote.sync.entities
 
+import android.net.Uri
 import com.vestateck.smetracker.data.dao.InventoryDao
 import com.vestateck.smetracker.data.entities.InventoryItem
 import com.vestateck.smetracker.data.remote.model.InventoryCost
@@ -9,10 +10,12 @@ import com.google.firebase.firestore.DocumentChange
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import java.io.File
 
 /**
  * Inventory (+ InventoryCost). Extracted from SyncEngine — same owner/worker
@@ -29,7 +32,8 @@ import kotlinx.coroutines.tasks.await
 class InventorySync(
     private val inventoryDao: InventoryDao,
     private val firestore: FirebaseFirestore,
-    private val externalScope: CoroutineScope
+    private val externalScope: CoroutineScope,
+    private val storage: FirebaseStorage = FirebaseStorage.getInstance()
 ) {
     fun attachInventoryListener(businessRef: DocumentReference): ListenerRegistration {
         return businessRef.collection("inventory")
@@ -60,6 +64,17 @@ class InventorySync(
                                     updatedAt = remote.updatedAt,
                                     recordedBy = remote.recordedBy,
                                     costReconciled = costReconciled,
+                                    // localImagePath only ever means something on the
+                                    // device that actually has that file — never carry
+                                    // it over from the remote doc (it doesn't have one).
+                                    // Preserve whatever this device already had.
+                                    localImagePath = existing?.localImagePath,
+                                    imageUrl = remote.imageUrl.ifBlank { null },
+                                    // Preserve rather than reset to false: if this
+                                    // device has a photo mid-upload, a pull racing in
+                                    // ahead of that upload's push shouldn't make
+                                    // pushPending think there's nothing left to do.
+                                    imagePendingUpload = existing?.imagePendingUpload ?: false,
                                     pendingSync = false
                                 )
                             )
@@ -98,6 +113,29 @@ class InventorySync(
         val pending = inventoryDao.getPendingSyncItems()
         for (item in pending) {
             try {
+                // Upload a newly-picked photo before writing the Firestore doc,
+                // so imageUrl below is never stale. Guarded by
+                // imagePendingUpload rather than "imageUrl is blank" so an
+                // item's 50th unrelated price edit doesn't re-upload the same
+                // file it already uploaded on edit #2 — see InventoryItem's
+                // doc comment on this field.
+                var imageUrl = item.imageUrl ?: ""
+                if (item.imagePendingUpload && item.localImagePath != null) {
+                    val file = File(item.localImagePath)
+                    if (file.exists()) {
+                        val photoRef = storage.reference.child("businesses/$businessId/inventory/${item.id}.jpg")
+                        photoRef.putFile(Uri.fromFile(file)).await()
+                        imageUrl = photoRef.downloadUrl.await().toString()
+                        inventoryDao.markImageUploaded(item.id, imageUrl)
+                    }
+                    // else: the picked file is gone (e.g. cache cleared) —
+                    // nothing to upload; falls through with whatever imageUrl
+                    // (if any) this item already had, and imagePendingUpload
+                    // is left set so this isn't silently swallowed — it'll
+                    // just keep retrying (and keep skipping) until the user
+                    // picks a new photo, same as any other pushPending retry.
+                }
+
                 businessRef.collection("inventory").document(item.id)
                     .set(
                         RemoteInventoryItem(
@@ -112,7 +150,8 @@ class InventorySync(
                             // original creator across re-pushes (e.g. after an owner
                             // reconciles the cost), only fill in myPhone for a
                             // brand-new local-only row.
-                            recordedBy = item.recordedBy.ifBlank { myPhone }
+                            recordedBy = item.recordedBy.ifBlank { myPhone },
+                            imageUrl = imageUrl
                         )
                     ).await()
 

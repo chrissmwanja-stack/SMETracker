@@ -69,6 +69,12 @@ dependencies {
     implementation(libs.firebase.storage)
     implementation(libs.firebase.appdist.api)
 
+    // Inventory item photos: local file paths (offline-first, see
+    // InventoryItemDialog) and Firebase Storage download URLs (once synced,
+    // see InventorySync) both load through the same AsyncImage call.
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
+
     implementation(libs.androidx.navigation.compose)
 
     implementation(libs.room.runtime)
