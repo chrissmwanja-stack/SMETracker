@@ -1,10 +1,10 @@
 rules_version = '2';
 
-// SMETracker — Firebase Storage Rules
+// SMETracker â€” Firebase Storage Rules
 //
 // INTERIM (Spark plan): proper business/role scoping requires firestore.get()
 // cross-service calls, which are Blaze-only. Until upgraded, this only checks
-// that the requester is signed in via phone auth — NOT that they belong to
+// that the requester is signed in via phone auth â€” NOT that they belong to
 // the specific business whose path they are reading/writing. Security for
 // business scoping currently relies on the app only ever requesting paths
 // for the signed-in user's own business.
@@ -12,7 +12,7 @@ rules_version = '2';
 // TODO once on Blaze: replace with businessId-scoped rules using
 // firestore.get(/databases/(default)/documents/phoneIndex/$(myPhone())).data
 // to check membership, mirroring firestore.rules. (Draft version already
-// exists — see git history / ask Claude to regenerate.)
+// exists â€” see git history / ask Claude to regenerate.)
 
 service firebase.storage {
   match /b/{bucket}/o {

@@ -15,7 +15,7 @@ data class Expense(
     val receiptNumber: String? = null,
     // Phone number (E.164) of whoever recorded this expense. Blank until the
     // first sync push fills it in from the current session — see SyncEngine.
-    val recordedBy: String = "",
+    @androidx.room.ColumnInfo(defaultValue = "''") val recordedBy: String = "",
     // Mirrors ExpenseStatus on the remote side, kept as a plain String here
     // (matching how `category` is already handled) rather than a Room-mapped
     // enum: "PENDING" | "APPROVED" | "REJECTED". A worker's expense always

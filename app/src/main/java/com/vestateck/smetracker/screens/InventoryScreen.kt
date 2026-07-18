@@ -29,6 +29,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.vestateck.smetracker.data.entities.InventoryItem
+import com.vestateck.smetracker.utils.IdGenerator
 import com.vestateck.smetracker.utils.ImageUtils
 import com.vestateck.smetracker.viewmodel.SMEViewModel
 import kotlinx.coroutines.Dispatchers
@@ -507,7 +508,7 @@ private fun InventoryItemDialog(
                         onClick = {
                             onConfirm(
                                 InventoryItem(
-                                    id = item?.id ?: "",
+                                    id = item?.id ?: IdGenerator.newId(),
                                     name = name,
                                     category = category,
                                     quantity = quantity.toIntOrNull() ?: 0,

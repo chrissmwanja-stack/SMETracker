@@ -42,8 +42,8 @@ data class InventoryItem(
     //     OTHER devices show the photo — they'll never have a
     //     localImagePath for it, only this. Falls back to display here when
     //     localImagePath is null.
-    @ColumnInfo(defaultValue = "NULL") val localImagePath: String? = null,
-    @ColumnInfo(defaultValue = "NULL") val imageUrl: String? = null,
+    val localImagePath: String? = null,
+    val imageUrl: String? = null,
     // True from the moment a new local photo is picked until InventorySync
     // has successfully uploaded it and recorded the resulting imageUrl —
     // mirrors pendingSync but specifically for the upload half, since a
