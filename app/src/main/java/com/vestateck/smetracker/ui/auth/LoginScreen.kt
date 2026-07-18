@@ -18,11 +18,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.smetracker.data.remote.auth.AuthScreenState
 import com.example.smetracker.data.remote.auth.AuthViewModel
+import com.example.smetracker.data.remote.model.MemberRole
 
 @Composable
 fun LoginScreen(
     viewModel: AuthViewModel,
-    onLoggedIn: (businessId: String, role: com.example.smetracker.data.remote.auth.MemberRole) -> Unit,
+    onLoggedIn: (businessId: String, role: MemberRole) -> Unit,
     onCreateBusiness: () -> Unit
 ) {
     val state by viewModel.screenState.collectAsState()

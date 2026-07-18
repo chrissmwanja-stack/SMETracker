@@ -9,11 +9,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.smetracker"
+    namespace = "com.vestateck.smetracker"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.smetracker"
+        applicationId = "com.vestateck.smetracker"
         minSdk = 24
         targetSdk = 37
         versionCode = 2

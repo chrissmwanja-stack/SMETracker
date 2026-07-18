@@ -11,7 +11,7 @@ import com.example.smetracker.data.entities.Sale
 import com.example.smetracker.data.entities.StockAdjustment
 import com.example.smetracker.data.entities.StockAdjustmentReason
 import com.example.smetracker.data.entities.Task
-import com.example.smetracker.data.remote.auth.MemberRole
+import com.example.smetracker.data.remote.model.MemberRole
 import com.example.smetracker.data.remote.auth.SessionManager
 import com.example.smetracker.data.remote.model.ExpenseStatus
 import com.example.smetracker.data.remote.model.InventoryCost
@@ -30,6 +30,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import android.content.Context
 import com.example.smetracker.notifications.ReconciliationNotifier
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -112,7 +113,7 @@ class SyncEngine(
     fun start() {
         if (listenerJob != null) return
         ReconciliationNotifier.ensureChannel(context)
-        listenerJob = externalScope.launch {
+        listenerJob = externalScope.launch(Dispatchers.IO) {
             sessionManager.sessionState
                 .filter { it.hasBusiness }
                 .distinctUntilChangedBy { it.businessId }
@@ -136,7 +137,7 @@ class SyncEngine(
 
     /** Fire-and-forget from the ViewModel after any local mutation, any entity. */
     fun requestPush() {
-        externalScope.launch { pushAllPending() }
+        externalScope.launch(Dispatchers.IO) { pushAllPending() }
     }
 
     private fun attachListeners(businessId: String, role: MemberRole?, myPhone: String?) {
@@ -165,7 +166,7 @@ class SyncEngine(
         // re-login) restarts this cleanly rather than stacking collectors.
         notifierJob?.cancel()
         notifierJob = if (role == MemberRole.OWNER) {
-            externalScope.launch {
+            externalScope.launch(Dispatchers.IO) {
                 combine(
                     smeDao.getUnreconciledSalesCount(),
                     inventoryDao.getUnreconciledItemsCount()
@@ -177,7 +178,7 @@ class SyncEngine(
 
         // Initial catch-up push in case there are locally-pending writes from
         // before this business was attached (e.g. offline signup/edits).
-        externalScope.launch { pushAllPending() }
+        externalScope.launch(Dispatchers.IO) { pushAllPending() }
     }
 
     private suspend fun pushAllPending() {
@@ -203,7 +204,7 @@ class SyncEngine(
         return businessRef.collection("customers")
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener
-                externalScope.launch {
+                externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         val remote = change.document.toObject(RemoteCustomer::class.java)
@@ -251,7 +252,7 @@ class SyncEngine(
         return businessRef.collection("sales")
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener
-                externalScope.launch {
+                externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         val remote = change.document.toObject(RemoteSale::class.java)
@@ -296,7 +297,7 @@ class SyncEngine(
         return businessRef.collection("saleFinancials")
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener
-                externalScope.launch {
+                externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         val remote = change.document.toObject(SaleFinancials::class.java)
@@ -361,7 +362,7 @@ class SyncEngine(
         return businessRef.collection("debts")
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener
-                externalScope.launch {
+                externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         val remote = change.document.toObject(RemoteDebt::class.java)
@@ -415,7 +416,7 @@ class SyncEngine(
         return businessRef.collection("inventory")
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener
-                externalScope.launch {
+                externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         val remote = change.document.toObject(RemoteInventoryItem::class.java)
@@ -451,7 +452,7 @@ class SyncEngine(
         return businessRef.collection("inventoryCosts")
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener
-                externalScope.launch {
+                externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         val remote = change.document.toObject(InventoryCost::class.java)
@@ -516,7 +517,7 @@ class SyncEngine(
         return businessRef.collection("stockAdjustments")
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener
-                externalScope.launch {
+                externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         val remote = change.document.toObject(RemoteStockAdjustment::class.java)
@@ -585,7 +586,7 @@ class SyncEngine(
         }
         return query.addSnapshotListener { snapshot, error ->
             if (error != null || snapshot == null) return@addSnapshotListener
-            externalScope.launch {
+            externalScope.launch(Dispatchers.IO) {
                 for (change in snapshot.documentChanges) {
                     if (change.type == DocumentChange.Type.REMOVED) continue
                     val remote = change.document.toObject(RemoteExpense::class.java)
@@ -660,7 +661,7 @@ class SyncEngine(
         return businessRef.collection("tasks")
             .addSnapshotListener { snapshot, error ->
                 if (error != null || snapshot == null) return@addSnapshotListener
-                externalScope.launch {
+                externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         val remote = change.document.toObject(RemoteTask::class.java)

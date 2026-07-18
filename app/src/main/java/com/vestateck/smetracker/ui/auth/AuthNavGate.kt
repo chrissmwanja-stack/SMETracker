@@ -18,6 +18,7 @@ import com.example.smetracker.data.remote.auth.AuthRepository
 import com.example.smetracker.data.remote.auth.AuthViewModel
 import com.example.smetracker.data.remote.auth.BusinessRepository
 import com.example.smetracker.data.remote.auth.SessionManager
+import com.example.smetracker.data.remote.model.MemberRole
 
 /**
  * Manual DI factory, matching SMETracker's existing pattern (no Hilt).
@@ -46,7 +47,7 @@ fun AuthNavGate(
     authViewModel: AuthViewModel,
     sessionManager: SessionManager,
     businessRepository: BusinessRepository,
-    onEnterApp: (businessId: String, role: com.example.smetracker.data.remote.auth.MemberRole) -> Unit
+    onEnterApp: (businessId: String, role: MemberRole) -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val session by sessionManager.sessionState.collectAsState(initial = null)
@@ -88,9 +89,9 @@ fun AuthNavGate(
                         scope.launch {
                             sessionManager.saveBusinessMembership(
                                 businessId,
-                                com.example.smetracker.data.remote.auth.MemberRole.OWNER
+                                MemberRole.OWNER
                             )
-                            onEnterApp(businessId, com.example.smetracker.data.remote.auth.MemberRole.OWNER)
+                            onEnterApp(businessId, MemberRole.OWNER)
                         }
                     }
                 )

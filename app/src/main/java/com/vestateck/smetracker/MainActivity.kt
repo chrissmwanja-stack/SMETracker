@@ -27,7 +27,7 @@ import com.example.smetracker.data.database.SMEDatabase
 import com.example.smetracker.data.remote.auth.AuthRepository
 import com.example.smetracker.data.remote.auth.AuthViewModel
 import com.example.smetracker.data.remote.auth.BusinessRepository
-import com.example.smetracker.data.remote.auth.MemberRole
+import com.example.smetracker.data.remote.model.MemberRole
 import com.example.smetracker.data.remote.auth.SessionManager
 import com.example.smetracker.data.remote.sync.SyncEngine
 import com.example.smetracker.navigation.Screen
@@ -190,5 +190,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        syncEngine.stop()
+        super.onDestroy()
     }
 }
