@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 
 /**
- * Hand-rolled in-memory fake of SMEDao for unit tests — there's no mocking
+ * Hand-rolled in-memory fake of SMEDao for unit tests - there's no mocking
  * library in this project's test dependencies (see build.gradle.kts), and
  * SMEDao is a plain interface, so a fake is simpler than adding one just for
  * this. Backed by MutableStateFlow per table so anything observing e.g.
@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.update
  *
  * Only implements the querying/mutation semantics that SMERepository and
  * SMEViewModel actually rely on (e.g. reconcileSaleFinancials setting
- * financialsReconciled = true) — not a full SQL reimplementation.
+ * financialsReconciled = true) - not a full SQL reimplementation.
  */
 class FakeSMEDao : SMEDao {
 
@@ -31,7 +31,7 @@ class FakeSMEDao : SMEDao {
     val expensesFlow = MutableStateFlow<List<Expense>>(emptyList())
     val tasksFlow = MutableStateFlow<List<Task>>(emptyList())
 
-    // ── Sales ─────────────────────────────────────────────────────
+    // -- Sales -----------------------------------------------------
     override fun getAllSales(): Flow<List<Sale>> = salesFlow
     override suspend fun getSaleById(saleId: String): Sale? = salesFlow.value.find { it.id == saleId }
     override fun getTotalRevenue(): Flow<Double?> = salesFlow.map { list -> list.sumOf { it.amount } }
@@ -53,7 +53,7 @@ class FakeSMEDao : SMEDao {
         salesFlow.update { list -> list.filterNot { it.id == sale.id } }
     }
 
-    // ── Reconciliation (Sale) ───────────────────────────────────
+    // -- Reconciliation (Sale) -------------------------------------
     override fun getUnreconciledSales(): Flow<List<Sale>> =
         salesFlow.map { list -> list.filterNot { it.financialsReconciled } }
 
@@ -75,13 +75,13 @@ class FakeSMEDao : SMEDao {
         }
     }
 
-    // ── Sync (Sale) ──────────────────────────────────────────────
+    // -- Sync (Sale) -------------------------------------------------
     override suspend fun getPendingSyncSales(): List<Sale> = salesFlow.value.filter { it.pendingSync }
     override suspend fun clearSalePendingSync(saleId: String) {
         salesFlow.update { list -> list.map { if (it.id == saleId) it.copy(pendingSync = false) else it } }
     }
 
-    // ── Customers ─────────────────────────────────────────────────
+    // -- Customers ---------------------------------------------------
     override fun getAllCustomers(): Flow<List<Customer>> = customersFlow
     override fun searchCustomers(query: String): Flow<List<Customer>> =
         customersFlow.map { list -> list.filter { it.name.contains(query, ignoreCase = true) || it.phone.contains(query) } }
@@ -104,7 +104,7 @@ class FakeSMEDao : SMEDao {
         customersFlow.update { list -> list.map { if (it.id == customerId) it.copy(pendingSync = false) else it } }
     }
 
-    // ── Debts ────────────────────────────────────────────────────
+    // -- Debts ---------------------------------------------------------
     override fun getAllDebts(): Flow<List<Debt>> = debtsFlow
     override fun getUnpaidDebts(): Flow<List<Debt>> = debtsFlow.map { list -> list.filterNot { it.isPaid } }
     override fun getTotalOutstandingDebt(): Flow<Double?> =
@@ -128,8 +128,9 @@ class FakeSMEDao : SMEDao {
         debtsFlow.update { list -> list.map { if (it.id == debtId) it.copy(pendingSync = false) else it } }
     }
 
-    // ── Expenses ─────────────────────────────────────────────────
+    // -- Expenses --------------------------------------------------
     override fun getAllExpenses(): Flow<List<Expense>> = expensesFlow
+    override suspend fun getExpenseById(expenseId: String): Expense? = expensesFlow.value.find { it.id == expenseId }
     override fun getTotalExpenses(): Flow<Double?> = expensesFlow.map { list -> list.sumOf { it.amount } }
 
     override suspend fun insertExpense(expense: Expense): Long {
@@ -146,7 +147,16 @@ class FakeSMEDao : SMEDao {
         expensesFlow.update { list -> list.map { if (it.id == expenseId) it.copy(pendingSync = false) else it } }
     }
 
-    // ── Tasks ────────────────────────────────────────────────────
+    override suspend fun markReceiptUploaded(expenseId: String, receiptUrl: String) {
+        expensesFlow.update { list ->
+            list.map {
+                if (it.id == expenseId) it.copy(receiptUrl = receiptUrl, receiptPendingUpload = false)
+                else it
+            }
+        }
+    }
+
+    // -- Tasks -----------------------------------------------------
     override fun getPendingTasks(): Flow<List<Task>> = tasksFlow.map { list -> list.filterNot { it.isCompleted } }
     override fun getPendingTaskCount(): Flow<Long> = tasksFlow.map { list -> list.count { !it.isCompleted }.toLong() }
 

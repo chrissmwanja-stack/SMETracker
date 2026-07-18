@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface SMEDao {
-    // ── Sales ─────────────────────────────────────────────────────
+    // -- Sales -----------------------------------------------------
     @Query("SELECT * FROM sales ORDER BY date DESC")
     fun getAllSales(): Flow<List<Sale>>
 
@@ -33,8 +33,8 @@ interface SMEDao {
     @Delete
     suspend fun deleteSale(sale: Sale)
 
-    // ── Reconciliation (Sale) ───────────────────────────────────
-    // Owner-only queries backing the Reconciliation screen — surfaces sales
+    // -- Reconciliation (Sale) -------------------------------------
+    // Owner-only queries backing the Reconciliation screen - surfaces sales
     // (almost always worker-recorded, tied to a tracked inventory item)
     // whose costPriceSnapshot/profit an owner hasn't reviewed yet.
     @Query("SELECT * FROM sales WHERE financialsReconciled = 0 ORDER BY date DESC")
@@ -49,14 +49,14 @@ interface SMEDao {
     )
     suspend fun reconcileSaleFinancials(saleId: String, costPriceSnapshot: Double, profit: Double)
 
-    // ── Sync (Sale) ──────────────────────────────────────────────
+    // -- Sync (Sale) -------------------------------------------------
     @Query("SELECT * FROM sales WHERE pendingSync = 1")
     suspend fun getPendingSyncSales(): List<Sale>
 
     @Query("UPDATE sales SET pendingSync = 0 WHERE id = :saleId")
     suspend fun clearSalePendingSync(saleId: String)
 
-    // ── Customers ─────────────────────────────────────────────────
+    // -- Customers ---------------------------------------------------
     @Query("SELECT * FROM customers ORDER BY name ASC")
     fun getAllCustomers(): Flow<List<Customer>>
 
@@ -72,14 +72,14 @@ interface SMEDao {
     @Delete
     suspend fun deleteCustomer(customer: Customer)
 
-    // ── Sync (Customer, Phase 3 proof) ──────────────────────────────
+    // -- Sync (Customer, Phase 3 proof) ------------------------------
     @Query("SELECT * FROM customers WHERE pendingSync = 1")
     suspend fun getPendingSyncCustomers(): List<Customer>
 
     @Query("UPDATE customers SET pendingSync = 0 WHERE id = :customerId")
     suspend fun clearCustomerPendingSync(customerId: String)
 
-    // ── Debts ────────────────────────────────────────────────────
+    // -- Debts ---------------------------------------------------------
     @Query("SELECT * FROM debts ORDER BY date DESC")
     fun getAllDebts(): Flow<List<Debt>>
 
@@ -98,16 +98,19 @@ interface SMEDao {
     @Delete
     suspend fun deleteDebt(debt: Debt)
 
-    // ── Sync (Debt) ──────────────────────────────────────────────
+    // -- Sync (Debt) ---------------------------------------------------
     @Query("SELECT * FROM debts WHERE pendingSync = 1")
     suspend fun getPendingSyncDebts(): List<Debt>
 
     @Query("UPDATE debts SET pendingSync = 0 WHERE id = :debtId")
     suspend fun clearDebtPendingSync(debtId: String)
 
-    // ── Expenses ─────────────────────────────────────────────────
+    // -- Expenses --------------------------------------------------
     @Query("SELECT * FROM expenses ORDER BY date DESC")
     fun getAllExpenses(): Flow<List<Expense>>
+
+    @Query("SELECT * FROM expenses WHERE id = :expenseId")
+    suspend fun getExpenseById(expenseId: String): Expense?
 
     @Query("SELECT SUM(amount) FROM expenses")
     fun getTotalExpenses(): Flow<Double?>
@@ -118,14 +121,23 @@ interface SMEDao {
     @Delete
     suspend fun deleteExpense(expense: Expense)
 
-    // ── Sync (Expense) ───────────────────────────────────────────
+    // -- Sync (Expense) ----------------------------------------------
     @Query("SELECT * FROM expenses WHERE pendingSync = 1")
     suspend fun getPendingSyncExpenses(): List<Expense>
 
     @Query("UPDATE expenses SET pendingSync = 0 WHERE id = :expenseId")
     suspend fun clearExpensePendingSync(expenseId: String)
 
-    // ── Tasks ────────────────────────────────────────────────────
+    // Called by ExpenseSync after a picked receipt photo finishes uploading
+    // to Firebase Storage - records the resulting download URL and clears
+    // the upload-pending flag. Mirrors InventoryDao.markImageUploaded.
+    @Query(
+        "UPDATE expenses SET receiptUrl = :receiptUrl, receiptPendingUpload = 0 " +
+                "WHERE id = :expenseId"
+    )
+    suspend fun markReceiptUploaded(expenseId: String, receiptUrl: String)
+
+    // -- Tasks -----------------------------------------------------
     @Query("SELECT * FROM tasks WHERE isCompleted = 0 ORDER BY dueDate ASC")
     fun getPendingTasks(): Flow<List<Task>>
 
@@ -141,7 +153,7 @@ interface SMEDao {
     @Delete
     suspend fun deleteTask(task: Task)
 
-    // ── Sync (Task) ──────────────────────────────────────────────
+    // -- Sync (Task) -------------------------------------------------
     @Query("SELECT * FROM tasks WHERE pendingSync = 1")
     suspend fun getPendingSyncTasks(): List<Task>
 
