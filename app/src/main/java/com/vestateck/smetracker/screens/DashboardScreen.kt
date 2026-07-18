@@ -42,6 +42,7 @@ fun DashboardScreen(
     onAddWorker: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val businessName by viewModel.businessName.collectAsState()
     val expenses by viewModel.expenses.collectAsState()
     val pendingTasks by viewModel.pendingTasks.collectAsState()
     val windowSize = rememberWindowSize()
@@ -53,7 +54,13 @@ fun DashboardScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("SME Tracker", fontWeight = FontWeight.Bold, fontSize = if (isTablet) 24.sp else 20.sp)
+                        Text(
+                            businessName.ifBlank { "SME Tracker" },
+                            fontWeight = FontWeight.Bold,
+                            fontSize = if (isTablet) 24.sp else 20.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         Text("Business Overview", fontSize = if (isTablet) 14.sp else 12.sp, color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f))
                     }
                 },

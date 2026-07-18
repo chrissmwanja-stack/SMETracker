@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.vestateck.smetracker.data.DashboardAnalytics
 import com.vestateck.smetracker.data.DashboardUiState
 import com.vestateck.smetracker.data.entities.*
+import com.vestateck.smetracker.data.remote.auth.BusinessRepository
 import com.vestateck.smetracker.data.remote.auth.SessionManager
 import com.vestateck.smetracker.data.remote.sync.SyncEngine
 import com.vestateck.smetracker.repository.SMERepository
@@ -28,7 +29,12 @@ class SMEViewModel(
     // addSale/addInventoryItem/upsertInventoryItem) — when null, new sales
     // and inventory items are treated as owner-recorded/already-reconciled,
     // matching this ViewModel's pre-reconciliation behavior.
-    private val sessionManager: SessionManager? = null
+    private val sessionManager: SessionManager? = null,
+    // Nullable for the same reason as syncEngine/sessionManager. Used only
+    // to load the business's display name for the dashboard header — when
+    // null (or when there's no session/businessId yet), businessName just
+    // stays blank and callers fall back to a default label.
+    private val businessRepository: BusinessRepository? = null
 ) : ViewModel() {
 
     val sales: StateFlow<List<Sale>> = repository.allSales
@@ -60,6 +66,24 @@ class SMEViewModel(
         repository.unreconciledSalesCount, repository.unreconciledInventoryCount
     ) { sales, items -> (sales + items).toInt() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    // Business display name for the dashboard header. Loaded once per
+    // businessId change rather than folded into the uiState combine() chain
+    // above — the business's own name essentially never changes during a
+    // session, so there's no need to re-fetch it on every sales/customers/etc.
+    // update. Falls back to blank if there's no session, no businessId yet,
+    // or the fetch fails; callers should show a default label in that case.
+    val businessName: StateFlow<String> = (sessionManager?.sessionState ?: flowOf(null))
+        .map { it?.businessId }
+        .distinctUntilChanged()
+        .map { businessId ->
+            if (businessId == null || businessRepository == null) {
+                ""
+            } else {
+                businessRepository.getBusiness(businessId).getOrNull()?.name ?: ""
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     // Snapshot of "who's recording this and is it trustworthy", read fresh at
     // each mutation rather than cached, since the session can change (e.g.

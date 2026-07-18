@@ -3,6 +3,7 @@ package com.vestateck.smetracker.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.vestateck.smetracker.data.remote.auth.BusinessRepository
 import com.vestateck.smetracker.data.remote.auth.SessionManager
 import com.vestateck.smetracker.data.remote.sync.SyncEngine
 import com.vestateck.smetracker.repository.SMERepository
@@ -12,11 +13,12 @@ class SMEViewModelFactory(
     // Nullable to keep this factory usable in tests/previews that don't need
     // sync — see SMEViewModel's constructor doc for the same reasoning.
     private val syncEngine: SyncEngine? = null,
-    private val sessionManager: SessionManager? = null
+    private val sessionManager: SessionManager? = null,
+    private val businessRepository: BusinessRepository? = null
 ) : ViewModelProvider.Factory {
 
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return SMEViewModel(repository, syncEngine, sessionManager) as T
+        return SMEViewModel(repository, syncEngine, sessionManager, businessRepository) as T
     }
 }

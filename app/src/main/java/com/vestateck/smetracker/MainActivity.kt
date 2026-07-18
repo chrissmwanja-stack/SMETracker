@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity() {
     private val syncEngine by lazy { SyncEngine(database.smeDao(), database.inventoryDao(), sessionManager, lifecycleScope, applicationContext) }
 
     private val viewModelFactory by lazy {
-        SMEViewModelFactory(SMERepository(database.smeDao(), database.inventoryDao()), syncEngine, sessionManager)
+        SMEViewModelFactory(SMERepository(database.smeDao(), database.inventoryDao()), syncEngine, sessionManager, businessRepository)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

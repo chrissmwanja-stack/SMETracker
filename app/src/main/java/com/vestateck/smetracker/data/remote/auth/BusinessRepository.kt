@@ -1,5 +1,6 @@
 package com.vestateck.smetracker.data.remote.auth
 
+import com.vestateck.smetracker.data.remote.model.Business
 import com.vestateck.smetracker.data.remote.model.MemberRole
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -201,6 +202,18 @@ class BusinessRepository(
                 .get()
                 .await()
             Result.success(snapshot.documents.map { it.id to (it.data ?: emptyMap()) })
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** For the dashboard header, and any other screen that needs the business's own name. */
+    suspend fun getBusiness(businessId: String): Result<Business> {
+        return try {
+            val snapshot = firestore.collection("businesses").document(businessId).get().await()
+            val business = snapshot.toObject(Business::class.java)
+                ?: return Result.failure(IllegalStateException("Business not found."))
+            Result.success(business)
         } catch (e: Exception) {
             Result.failure(e)
         }
