@@ -23,6 +23,7 @@ import com.vestateck.smetracker.data.entities.InventoryItem
 import com.vestateck.smetracker.data.entities.PaymentMethod
 import com.vestateck.smetracker.utils.CurrencyUtils
 import com.vestateck.smetracker.viewmodel.SMEViewModel
+import com.vestateck.smetracker.viewmodel.SaleLineInput
 import java.util.UUID
 
 // One row in the "cart" of products being sold to the same customer in this
@@ -59,6 +60,10 @@ fun AddSaleScreen(viewModel: SMEViewModel, navController: NavController) {
     var customerName by remember { mutableStateOf("") }
     var selectedCustomerId by remember { mutableStateOf<String?>(null) }
     var customerFieldExpanded by remember { mutableStateOf(false) }
+    // Only meaningful when there's a typed name that doesn't match a saved
+    // customer (selectedCustomerId == null). Lets a walk-in be promoted to a
+    // real Customer record at save time instead of staying a name-only sale.
+    var saveAsNewCustomer by remember { mutableStateOf(false) }
     val matchingCustomers = remember(customerName, customers) {
         if (customerName.isBlank()) customers
         else customers.filter {
@@ -137,6 +142,7 @@ fun AddSaleScreen(viewModel: SMEViewModel, navController: NavController) {
                         ) {
                             selectedCustomerId = null
                         }
+                        saveAsNewCustomer = false
                         customerFieldExpanded = true
                     },
                     label = { Text("Customer Name") },
@@ -162,6 +168,7 @@ fun AddSaleScreen(viewModel: SMEViewModel, navController: NavController) {
                                 onClick = {
                                     customerName = customer.name
                                     selectedCustomerId = customer.id
+                                    saveAsNewCustomer = false
                                     customerFieldExpanded = false
                                 }
                             )
@@ -171,10 +178,27 @@ fun AddSaleScreen(viewModel: SMEViewModel, navController: NavController) {
             }
             if (customerName.isNotBlank() && selectedCustomerId == null) {
                 Text(
-                    "No saved customer matches \"$customerName\" — this sale will be recorded under that name without linking to a saved customer.",
+                    "No saved customer matches \"$customerName\".",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Checkbox(
+                        checked = saveAsNewCustomer,
+                        onCheckedChange = { saveAsNewCustomer = it }
+                    )
+                    Text("Save \"$customerName\" as a new customer", fontSize = 13.sp)
+                }
+                if (!saveAsNewCustomer) {
+                    Text(
+                        "Unchecked: this sale is recorded under that name only, and won't appear in Customers.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
@@ -249,17 +273,23 @@ fun AddSaleScreen(viewModel: SMEViewModel, navController: NavController) {
                     // both operate on individual Sale rows) — this just lets
                     // several of them be entered and saved together for one
                     // customer instead of round-tripping this screen per item.
-                    lineItems.forEach { line ->
-                        viewModel.addSale(
-                            customerName = customerName,
-                            customerId = selectedCustomerId,
-                            description = line.description.ifBlank { line.selectedItem?.name ?: "" },
-                            amount = line.amount.toDoubleOrNull() ?: 0.0,
-                            paymentMethod = paymentMethod,
-                            inventoryItemId = line.selectedItem?.id,
-                            quantity = line.quantityInput.toIntOrNull() ?: 1
-                        )
-                    }
+                    // addSaleLines resolves/creates the customer once up
+                    // front (honoring the "Save as new customer" toggle) so
+                    // every line shares the same customerId.
+                    viewModel.addSaleLines(
+                        customerName = customerName,
+                        selectedCustomerId = selectedCustomerId,
+                        saveAsNewCustomer = saveAsNewCustomer,
+                        paymentMethod = paymentMethod,
+                        lines = lineItems.map { line ->
+                            SaleLineInput(
+                                description = line.description.ifBlank { line.selectedItem?.name ?: "" },
+                                amount = line.amount.toDoubleOrNull() ?: 0.0,
+                                inventoryItemId = line.selectedItem?.id,
+                                quantity = line.quantityInput.toIntOrNull() ?: 1
+                            )
+                        }
+                    )
                     navController.popBackStack()
                 },
                 enabled = canSave,

@@ -203,7 +203,7 @@ private fun SummarySection(isTablet: Boolean, uiState: DashboardUiState, isOwner
                 SummaryCard(Modifier.weight(1f), "Today's Revenue", CurrencyUtils.formatUgx(uiState.todayRevenue), Icons.Default.AttachMoney, MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
                 SummaryCard(Modifier.weight(1f), "Total Revenue", CurrencyUtils.formatUgx(uiState.totalRevenue), Icons.Default.AttachMoney, MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
                 SummaryCard(Modifier.weight(1f), "Outstanding Debt", CurrencyUtils.formatUgx(uiState.totalOutstandingDebt), Icons.Default.Warning, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
-                SummaryCard(Modifier.weight(1f), "Customers", "${uiState.customers.size}", Icons.Default.People, MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+                SummaryCard(Modifier.weight(1f), "Customers", "${uiState.analytics.totalCustomerCount}", Icons.Default.People, MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
             }
             Spacer(Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -222,7 +222,7 @@ private fun SummarySection(isTablet: Boolean, uiState: DashboardUiState, isOwner
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SummaryCard(Modifier.weight(1f), "Outstanding Debt", CurrencyUtils.formatUgx(uiState.totalOutstandingDebt), Icons.Default.Warning, MaterialTheme.colorScheme.errorContainer, MaterialTheme.colorScheme.onErrorContainer)
-                SummaryCard(Modifier.weight(1f), "Customers", "${uiState.customers.size}", Icons.Default.People, MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+                SummaryCard(Modifier.weight(1f), "Customers", "${uiState.analytics.totalCustomerCount}", Icons.Default.People, MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
             }
             // Stock Value is quantity × costPrice — owner-only data (see above).
             // A worker still gets the Low Stock card, just full-width instead

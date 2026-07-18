@@ -1,5 +1,6 @@
 package com.vestateck.smetracker.data
 
+import com.vestateck.smetracker.data.entities.Customer
 import com.vestateck.smetracker.data.entities.Debt
 import com.vestateck.smetracker.data.entities.Expense
 import com.vestateck.smetracker.data.entities.InventoryItem
@@ -22,6 +23,7 @@ class DashboardAnalyticsTest {
     private fun sale(
         id: String,
         customerName: String = "Jane",
+        customerId: String? = null,
         description: String = "Item",
         amount: Double,
         profit: Double = 0.0,
@@ -29,6 +31,7 @@ class DashboardAnalyticsTest {
         paymentMethod: PaymentMethod = PaymentMethod.CASH
     ) = Sale(
         id = id,
+        customerId = customerId,
         customerName = customerName,
         description = description,
         amount = amount,
@@ -49,6 +52,8 @@ class DashboardAnalyticsTest {
 
     private fun inventoryItem(id: String, quantity: Int, category: String = "") =
         InventoryItem(id = id, name = "Item $id", quantity = quantity, category = category)
+
+    private fun customer(id: String, name: String) = Customer(id = id, name = name)
 
     // ── Sales period bucketing ──
 
@@ -245,11 +250,52 @@ class DashboardAnalyticsTest {
     }
 
     @Test
+    fun `total customer count includes walk-in sales not linked to a saved customer`() {
+        val analytics = DashboardAnalytics.from(
+            sales = listOf(
+                sale(id = "s1", customerName = "Grace", customerId = "c1", amount = 100.0),
+                sale(id = "s2", customerName = "Walk-in Moses", amount = 50.0),
+                sale(id = "s3", customerName = "Walk-in Moses", amount = 30.0) // same walk-in, repeat visit
+            ),
+            debts = emptyList(),
+            inventoryItems = emptyList(),
+            customers = listOf(customer(id = "c1", name = "Grace"))
+        )
+        // 1 saved customer (Grace) + 1 distinct walk-in (Moses, deduped across his 2 sales) = 2
+        assertEquals(2, analytics.totalCustomerCount)
+    }
+
+    @Test
+    fun `total customer count does not double-count a walk-in typed with a saved customer's exact name`() {
+        val analytics = DashboardAnalytics.from(
+            sales = listOf(
+                sale(id = "s1", customerName = "Grace", amount = 50.0) // typed, not picked from dropdown
+            ),
+            debts = emptyList(),
+            inventoryItems = emptyList(),
+            customers = listOf(customer(id = "c1", name = "Grace"))
+        )
+        assertEquals(1, analytics.totalCustomerCount)
+    }
+
+    @Test
+    fun `saved customer with no sales still counts`() {
+        val analytics = DashboardAnalytics.from(
+            sales = emptyList(),
+            debts = emptyList(),
+            inventoryItems = emptyList(),
+            customers = listOf(customer(id = "c1", name = "Grace"))
+        )
+        assertEquals(1, analytics.totalCustomerCount)
+    }
+
+    @Test
     fun `empty input produces zeroed analytics without throwing`() {
         val analytics = DashboardAnalytics.from(emptyList(), emptyList(), emptyList())
         assertEquals(0, analytics.allTimeSales.count)
         assertEquals(0.0, analytics.allTimeSales.revenue, 0.0)
         assertEquals(0, analytics.topCustomers.size)
         assertEquals(0, analytics.totalStockUnits)
+        assertEquals(0, analytics.totalCustomerCount)
     }
 }

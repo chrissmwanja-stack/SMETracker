@@ -16,6 +16,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+// One product line from AddSaleScreen's cart — the subset of SaleLineItem
+// that's already been validated/resolved (amount and quantity parsed,
+// description defaulted) and is ready to become its own Sale row.
+data class SaleLineInput(
+    val description: String,
+    val amount: Double,
+    val inventoryItemId: String? = null,
+    val quantity: Int = 1
+)
+
 class SMEViewModel(
     private val repository: SMERepository,
     // Nullable so tests/previews that don't need sync can keep constructing
@@ -106,7 +116,7 @@ class SMEViewModel(
             inventoryItems = inventory,
             lowStockItems = inventory.filter { it.quantity > 0 && it.quantity <= it.reorderLevel },
             totalStockValue = inventory.sumOf { it.quantity * it.sellingPrice },
-            analytics = DashboardAnalytics.from(sales, debts, inventory, expenseList)
+            analytics = DashboardAnalytics.from(sales, debts, inventory, expenseList, customers)
         )
     }
         .flowOn(Dispatchers.Default)
@@ -290,6 +300,44 @@ class SMEViewModel(
 
         if (soldItem != null) {
             repository.recordSaleStockAdjustment(soldItem.id, quantity)
+        }
+        syncEngine?.requestPush()
+    }
+
+    // Entry point for AddSaleScreen's "cart" of line items. Handles the one
+    // thing that's genuinely different about that screen vs. calling addSale
+    // directly per line: the customer may be a walk-in the user has chosen,
+    // via the "Save as new customer" toggle, to promote into a real saved
+    // Customer for this sale. That promotion has to happen once, up front,
+    // and be awaited — every line item then shares the same resolved
+    // customerId, rather than each line racing to create its own duplicate
+    // Customer row.
+    fun addSaleLines(
+        customerName: String,
+        selectedCustomerId: String?,
+        saveAsNewCustomer: Boolean,
+        paymentMethod: PaymentMethod,
+        lines: List<SaleLineInput>
+    ) = viewModelScope.launch {
+        val resolvedCustomerId = when {
+            selectedCustomerId != null -> selectedCustomerId
+            saveAsNewCustomer && customerName.isNotBlank() -> {
+                val newCustomer = Customer(name = customerName)
+                repository.insertCustomer(newCustomer)
+                newCustomer.id
+            }
+            else -> null
+        }
+        lines.forEach { line ->
+            addSale(
+                customerName = customerName,
+                customerId = resolvedCustomerId,
+                description = line.description,
+                amount = line.amount,
+                paymentMethod = paymentMethod,
+                inventoryItemId = line.inventoryItemId,
+                quantity = line.quantity
+            )
         }
         syncEngine?.requestPush()
     }

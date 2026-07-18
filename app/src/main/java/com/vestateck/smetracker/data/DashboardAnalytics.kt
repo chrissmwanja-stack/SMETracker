@@ -1,6 +1,7 @@
 // data/DashboardAnalytics.kt
 package com.vestateck.smetracker.data
 
+import com.vestateck.smetracker.data.entities.Customer
 import com.vestateck.smetracker.data.entities.Debt
 import com.vestateck.smetracker.data.entities.Expense
 import com.vestateck.smetracker.data.entities.InventoryItem
@@ -52,14 +53,23 @@ data class DashboardAnalytics(
     val outOfStockCount: Int,
     val categoryBreakdown: Map<String, Int>,
     val topSellingProducts: List<ProductRanking>,
-    val paymentBreakdown: PaymentBreakdown
+    val paymentBreakdown: PaymentBreakdown,
+    // Everyone who counts as a customer: every saved Customer record, plus
+    // every distinct walk-in name from a sale that was never linked to a
+    // saved Customer (customerId == null). A walk-in who typed the exact
+    // name of a saved customer without picking them from the dropdown is
+    // matched by normalized name so they aren't double-counted. This is
+    // deliberately NOT the same list as the Customers screen — that screen
+    // only ever shows saved contacts; this is just the count.
+    val totalCustomerCount: Int
 ) {
     companion object {
         fun from(
             sales: List<Sale>,
             debts: List<Debt>,
             inventoryItems: List<InventoryItem>,
-            expenses: List<Expense> = emptyList()
+            expenses: List<Expense> = emptyList(),
+            customers: List<Customer> = emptyList()
         ): DashboardAnalytics {
             val now = System.currentTimeMillis()
             val startOfDay = TimeUtils.getStartOfDay()
@@ -140,6 +150,19 @@ data class DashboardAnalytics(
             val paidDebts = debts.filter { it.isPaid }
             val unpaidDebts = debts.filter { !it.isPaid }
 
+            // Saved customers always count. A walk-in sale (customerId ==
+            // null) adds its normalized name only if no saved customer
+            // already has that name — covers the case where someone typed a
+            // saved customer's name instead of picking them from the
+            // dropdown, so that person isn't counted twice.
+            val savedNames = customers.map { it.name.trim().lowercase() }.toSet()
+            val walkInNames = sales
+                .filter { it.customerId == null }
+                .map { it.customerName.trim().lowercase() }
+                .filter { it.isNotBlank() && it !in savedNames }
+                .toSet()
+            val totalCustomerCount = customers.size + walkInNames.size
+
             return DashboardAnalytics(
                 dailySales = SalesPeriodData(dailyCount, dailyRevenue, dailyProfit, dailyExpenses),
                 weeklySales = SalesPeriodData(weeklyCount, weeklyRevenue, weeklyProfit, weeklyExpenses),
@@ -162,7 +185,8 @@ data class DashboardAnalytics(
                     .groupBy { it.category.ifBlank { "Uncategorized" } }
                     .mapValues { (_, items) -> items.sumOf { it.quantity } },
                 topSellingProducts = topSellingProducts,
-                paymentBreakdown = paymentBreakdown
+                paymentBreakdown = paymentBreakdown,
+                totalCustomerCount = totalCustomerCount
             )
         }
     }
