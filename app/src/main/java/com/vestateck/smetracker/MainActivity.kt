@@ -39,6 +39,9 @@ import com.vestateck.smetracker.ui.components.OwnerOnlyGate
 import com.vestateck.smetracker.ui.theme.SMETrackerTheme
 import com.vestateck.smetracker.viewmodel.SMEViewModel
 import com.vestateck.smetracker.viewmodel.SMEViewModelFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val database by lazy { SMEDatabase.getDatabase(this) }
@@ -137,7 +140,22 @@ class MainActivity : ComponentActivity() {
                                         // signOut()'s completion callback closes that race.
                                         authViewModel.signOut {
                                             syncEngine.stop()
-                                            entered = null
+                                            // Local Room storage has no businessId scoping on any
+                                            // entity (see SMEDatabase.clearAllTablesSuspending() doc) —
+                                            // without wiping it here, the next sign-in (same device,
+                                            // any business, including a freshly created one) starts
+                                            // from whatever the previous business left behind. Awaited
+                                            // — not fire-and-forget — and `entered` only flips to null
+                                            // once the wipe finishes, so AuthNavGate can't route into a
+                                            // new sign-in/business-create flow, and SyncEngine can't
+                                            // start re-populating tables for the next business, until
+                                            // the previous business's data is actually gone.
+                                            lifecycleScope.launch(Dispatchers.IO) {
+                                                database.clearAllTablesSuspending()
+                                                withContext(Dispatchers.Main) {
+                                                    entered = null
+                                                }
+                                            }
                                         }
                                     },
                                     isOwner = currentEntry.second == MemberRole.OWNER,

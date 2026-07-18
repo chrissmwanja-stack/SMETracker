@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
+import androidx.room.withTransaction
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.vestateck.smetracker.data.dao.DebtDao
 import com.vestateck.smetracker.data.dao.InventoryDao
@@ -31,6 +32,23 @@ abstract class SMEDatabase : RoomDatabase() {
     abstract fun inventoryDao(): InventoryDao
     abstract fun saleDao(): SaleDao
     abstract fun debtDao(): DebtDao
+
+    // Local Room storage has no businessId scoping on any entity — it's a
+    // single shared cache of whatever business's Firestore data was synced
+    // most recently, not a per-business store. Firestore is the real source
+    // of truth and IS properly scoped (businesses/{businessId}/...); this is
+    // purely about the on-device cache. Without wiping it here, signing out
+    // and into a different business (or creating a new one) on the same
+    // device leaves every previous business's sales/inventory/customers/etc.
+    // sitting in Room, fully visible under the new business, since no query
+    // anywhere filters by businessId. Must be called — see MainActivity's
+    // sign-out flow — before the next business's SyncEngine listeners
+    // repopulate the (now-empty) tables from Firestore.
+    suspend fun clearAllTablesSuspending() {
+        withTransaction {
+            clearAllTables()
+        }
+    }
 
     companion object {
         @Volatile
