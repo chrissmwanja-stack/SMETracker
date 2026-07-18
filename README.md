@@ -2,6 +2,8 @@
 
 Android app for small business inventory, sales, debt, and expense tracking, built for the Ugandan SME market. Kotlin + Jetpack Compose, offline-first with Room, synced to Firestore.
 
+**New to this repo?** A business has two kinds of members: an **Owner** (sees all financials, approves expenses, reconciles cost/profit data) and a **Worker** (records day-to-day sales/inventory/expenses but can't see cost or profit — that's added later by an Owner). Most role-related code you'll run into is enforcing that split. Good starting points for reading the code: `SMEViewModel.kt` (what the UI can do), `SyncEngine.kt` (how local and remote data reconcile), and `firestore.rules` in the Firebase console (the actual access control — the app's role checks exist to avoid triggering writes the rules would reject anyway).
+
 ## Stack
 
 - **UI:** Jetpack Compose, Material 3, Navigation Compose
@@ -74,7 +76,9 @@ The owner/worker split mirrors `firestore.rules` exactly, so a rejected write fr
 
 ### Database (`data/database/SMEDatabase.kt`)
 
-Room database, currently at schema version 10. Most version bumps pre-launch used `fallbackToDestructiveMigration` since there was no user data to preserve yet; from v9→v10 onward, real `Migration` objects are expected for any schema change (see `MIGRATION_9_10` for the pattern to follow — it doesn't touch the locally-merged cost/profit columns, so pulling remote data and reconciling costs locally can't clobber each other regardless of order).
+Room database, currently at schema version 10. Most version bumps pre-launch used `fallbackToDestructiveMigration` since there was no user data to preserve yet.
+
+**Rule going forward:** any schema change from v9→v10 onward must ship a real `Migration` object — no more destructive fallback. See `MIGRATION_9_10` for the pattern (it doesn't touch the locally-merged cost/profit columns, so pulling remote data and reconciling costs locally can't clobber each other regardless of order).
 
 ### Testing
 
