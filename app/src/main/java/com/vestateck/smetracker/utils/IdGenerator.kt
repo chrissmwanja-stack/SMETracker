@@ -1,4 +1,4 @@
-package com.example.smetracker.utils
+package com.vestateck.smetracker.utils
 
 import com.google.firebase.firestore.FirebaseFirestore
 

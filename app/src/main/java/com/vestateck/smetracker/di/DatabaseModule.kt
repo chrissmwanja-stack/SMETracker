@@ -1,4 +1,4 @@
-package com.example.smetracker.di
+package com.vestateck.smetracker.di
 
 /*
 // Hilt is not yet set up in this project.
@@ -7,8 +7,8 @@ package com.example.smetracker.di
 
 import android.content.Context
 import androidx.room.Room
-import com.example.smetracker.data.database.SMEDatabase
-import com.example.smetracker.data.dao.*
+import com.vestateck.smetracker.data.database.SMEDatabase
+import com.vestateck.smetracker.data.dao.*
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn

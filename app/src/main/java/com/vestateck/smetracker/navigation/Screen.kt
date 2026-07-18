@@ -1,5 +1,5 @@
 // navigation/Screen.kt
-package com.example.smetracker.navigation
+package com.vestateck.smetracker.navigation
 
 sealed class Screen(val route: String) {
     object Dashboard : Screen("dashboard")

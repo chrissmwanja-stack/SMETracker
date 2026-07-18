@@ -1,4 +1,4 @@
-package com.example.smetracker.data.remote.model
+package com.vestateck.smetracker.data.remote.model
 
 // Firestore path: phoneIndex/{phoneNumberE164}  (top-level collection, not nested under a business)
 //

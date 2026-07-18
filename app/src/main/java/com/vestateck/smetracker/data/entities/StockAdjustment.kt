@@ -1,10 +1,10 @@
-package com.example.smetracker.data.entities
+package com.vestateck.smetracker.data.entities
 
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import com.example.smetracker.utils.IdGenerator
+import com.vestateck.smetracker.utils.IdGenerator
 
 enum class StockAdjustmentReason {
     INCOMING, // Adding stock (purchase/restock)

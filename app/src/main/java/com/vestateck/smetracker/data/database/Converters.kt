@@ -1,8 +1,8 @@
-package com.example.smetracker.data.database
+package com.vestateck.smetracker.data.database
 
 import androidx.room.TypeConverter
-import com.example.smetracker.data.entities.PaymentMethod
-import com.example.smetracker.data.entities.StockAdjustmentReason
+import com.vestateck.smetracker.data.entities.PaymentMethod
+import com.vestateck.smetracker.data.entities.StockAdjustmentReason
 
 class Converters {
     @TypeConverter

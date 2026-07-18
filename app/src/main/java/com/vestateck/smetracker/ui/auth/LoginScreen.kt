@@ -1,4 +1,4 @@
-package com.example.smetracker.ui.auth
+package com.vestateck.smetracker.ui.auth
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,9 +16,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.example.smetracker.data.remote.auth.AuthScreenState
-import com.example.smetracker.data.remote.auth.AuthViewModel
-import com.example.smetracker.data.remote.model.MemberRole
+import com.vestateck.smetracker.data.remote.auth.AuthScreenState
+import com.vestateck.smetracker.data.remote.auth.AuthViewModel
+import com.vestateck.smetracker.data.remote.model.MemberRole
 
 @Composable
 fun LoginScreen(

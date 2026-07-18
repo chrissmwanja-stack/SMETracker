@@ -1,4 +1,4 @@
-package com.example.smetracker.ui.auth
+package com.vestateck.smetracker.ui.auth
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -7,7 +7,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.smetracker.data.remote.auth.BusinessRepository
+import com.vestateck.smetracker.data.remote.auth.BusinessRepository
 import kotlinx.coroutines.launch
 
 /**

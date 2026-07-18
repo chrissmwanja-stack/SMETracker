@@ -1,5 +1,5 @@
 // screens/PaymentBreakdownScreen.kt
-package com.example.smetracker.screens
+package com.vestateck.smetracker.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -20,8 +20,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.example.smetracker.utils.CurrencyUtils
-import com.example.smetracker.viewmodel.SMEViewModel
+import com.vestateck.smetracker.utils.CurrencyUtils
+import com.vestateck.smetracker.viewmodel.SMEViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -1,16 +1,16 @@
 // viewmodel/SMEViewModel.kt
-package com.example.smetracker.viewmodel
+package com.vestateck.smetracker.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.smetracker.data.DashboardAnalytics
-import com.example.smetracker.data.DashboardUiState
-import com.example.smetracker.data.entities.*
-import com.example.smetracker.data.remote.auth.SessionManager
-import com.example.smetracker.data.remote.sync.SyncEngine
-import com.example.smetracker.repository.SMERepository
-import com.example.smetracker.utils.IdGenerator
-import com.example.smetracker.utils.TimeUtils
+import com.vestateck.smetracker.data.DashboardAnalytics
+import com.vestateck.smetracker.data.DashboardUiState
+import com.vestateck.smetracker.data.entities.*
+import com.vestateck.smetracker.data.remote.auth.SessionManager
+import com.vestateck.smetracker.data.remote.sync.SyncEngine
+import com.vestateck.smetracker.repository.SMERepository
+import com.vestateck.smetracker.utils.IdGenerator
+import com.vestateck.smetracker.utils.TimeUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch

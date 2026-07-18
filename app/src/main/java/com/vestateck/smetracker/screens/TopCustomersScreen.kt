@@ -1,5 +1,5 @@
 // screens/TopCustomersScreen.kt
-package com.example.smetracker.screens
+package com.vestateck.smetracker.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,8 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.example.smetracker.utils.CurrencyUtils
-import com.example.smetracker.viewmodel.SMEViewModel
+import com.vestateck.smetracker.utils.CurrencyUtils
+import com.vestateck.smetracker.viewmodel.SMEViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

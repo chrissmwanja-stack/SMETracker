@@ -1,7 +1,7 @@
-package com.example.smetracker.data.dao
+package com.vestateck.smetracker.data.dao
 
 import androidx.room.*
-import com.example.smetracker.data.entities.*
+import com.vestateck.smetracker.data.entities.*
 import kotlinx.coroutines.flow.Flow
 
 @Dao

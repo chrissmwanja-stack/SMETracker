@@ -1,4 +1,4 @@
-package com.example.smetracker.ui.auth
+package com.vestateck.smetracker.ui.auth
 
 import android.content.Context
 import androidx.compose.foundation.layout.Box
@@ -14,11 +14,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import com.example.smetracker.data.remote.auth.AuthRepository
-import com.example.smetracker.data.remote.auth.AuthViewModel
-import com.example.smetracker.data.remote.auth.BusinessRepository
-import com.example.smetracker.data.remote.auth.SessionManager
-import com.example.smetracker.data.remote.model.MemberRole
+import com.vestateck.smetracker.data.remote.auth.AuthRepository
+import com.vestateck.smetracker.data.remote.auth.AuthViewModel
+import com.vestateck.smetracker.data.remote.auth.BusinessRepository
+import com.vestateck.smetracker.data.remote.auth.SessionManager
+import com.vestateck.smetracker.data.remote.model.MemberRole
 
 /**
  * Manual DI factory, matching SMETracker's existing pattern (no Hilt).

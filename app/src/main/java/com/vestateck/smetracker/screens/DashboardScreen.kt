@@ -1,5 +1,5 @@
 // screens/DashboardScreen.kt
-package com.example.smetracker.screens
+package com.vestateck.smetracker.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,18 +19,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.example.smetracker.data.DashboardAnalytics
-import com.example.smetracker.data.DashboardUiState
-import com.example.smetracker.data.ProductRanking
-import com.example.smetracker.data.CustomerRanking
-import com.example.smetracker.data.entities.InventoryItem
-import com.example.smetracker.data.entities.Sale
-import com.example.smetracker.navigation.Screen
-import com.example.smetracker.ui.components.ReportRow
-import com.example.smetracker.utils.CurrencyUtils
-import com.example.smetracker.utils.WindowSize
-import com.example.smetracker.utils.rememberWindowSize
-import com.example.smetracker.viewmodel.SMEViewModel
+import com.vestateck.smetracker.data.DashboardAnalytics
+import com.vestateck.smetracker.data.DashboardUiState
+import com.vestateck.smetracker.data.ProductRanking
+import com.vestateck.smetracker.data.CustomerRanking
+import com.vestateck.smetracker.data.entities.InventoryItem
+import com.vestateck.smetracker.data.entities.Sale
+import com.vestateck.smetracker.navigation.Screen
+import com.vestateck.smetracker.ui.components.ReportRow
+import com.vestateck.smetracker.utils.CurrencyUtils
+import com.vestateck.smetracker.utils.WindowSize
+import com.vestateck.smetracker.utils.rememberWindowSize
+import com.vestateck.smetracker.viewmodel.SMEViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -457,7 +457,7 @@ private fun ProfitReportCard(analytics: DashboardAnalytics) {
 }
 
 @Composable
-private fun ProfitPeriodRow(label: String, data: com.example.smetracker.data.SalesPeriodData, isBold: Boolean = false) {
+private fun ProfitPeriodRow(label: String, data: com.vestateck.smetracker.data.SalesPeriodData, isBold: Boolean = false) {
     val netColor = if (data.netProfit >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

@@ -1,4 +1,4 @@
-package com.example.smetracker.data.database
+package com.vestateck.smetracker.data.database
 
 import android.content.Context
 import androidx.room.Database
@@ -7,17 +7,17 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.example.smetracker.data.dao.DebtDao
-import com.example.smetracker.data.dao.InventoryDao
-import com.example.smetracker.data.dao.SaleDao
-import com.example.smetracker.data.dao.SMEDao
-import com.example.smetracker.data.entities.Customer
-import com.example.smetracker.data.entities.Debt
-import com.example.smetracker.data.entities.Expense
-import com.example.smetracker.data.entities.InventoryItem
-import com.example.smetracker.data.entities.Sale
-import com.example.smetracker.data.entities.StockAdjustment
-import com.example.smetracker.data.entities.Task
+import com.vestateck.smetracker.data.dao.DebtDao
+import com.vestateck.smetracker.data.dao.InventoryDao
+import com.vestateck.smetracker.data.dao.SaleDao
+import com.vestateck.smetracker.data.dao.SMEDao
+import com.vestateck.smetracker.data.entities.Customer
+import com.vestateck.smetracker.data.entities.Debt
+import com.vestateck.smetracker.data.entities.Expense
+import com.vestateck.smetracker.data.entities.InventoryItem
+import com.vestateck.smetracker.data.entities.Sale
+import com.vestateck.smetracker.data.entities.StockAdjustment
+import com.vestateck.smetracker.data.entities.Task
 
 @Database(
     entities = [Sale::class, Customer::class, Debt::class, InventoryItem::class, Expense::class, Task::class, StockAdjustment::class],

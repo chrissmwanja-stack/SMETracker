@@ -1,4 +1,4 @@
-package com.example.smetracker.ui.theme
+package com.vestateck.smetracker.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

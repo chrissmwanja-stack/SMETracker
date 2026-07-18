@@ -1,4 +1,4 @@
-package com.example.smetracker.data.remote.model
+package com.vestateck.smetracker.data.remote.model
 
 // Firestore path: businesses/{businessId}/saleFinancials/{saleId}
 //

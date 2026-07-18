@@ -1,4 +1,4 @@
-package com.example.smetracker.utils
+package com.vestateck.smetracker.utils
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalConfiguration

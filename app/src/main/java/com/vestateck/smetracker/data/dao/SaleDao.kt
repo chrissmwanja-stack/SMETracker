@@ -1,8 +1,8 @@
-package com.example.smetracker.data.dao
+package com.vestateck.smetracker.data.dao
 
 import androidx.room.Dao
 import androidx.room.Query
-import com.example.smetracker.data.entities.Sale
+import com.vestateck.smetracker.data.entities.Sale
 import kotlinx.coroutines.flow.Flow
 
 // Helper data class for Room to map the grouped result

@@ -1,4 +1,4 @@
-package com.example.smetracker.data.remote.auth
+package com.vestateck.smetracker.data.remote.auth
 
 import android.content.Context
 import androidx.datastore.core.DataStore
@@ -7,7 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.example.smetracker.data.remote.model.MemberRole
+import com.vestateck.smetracker.data.remote.model.MemberRole
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map

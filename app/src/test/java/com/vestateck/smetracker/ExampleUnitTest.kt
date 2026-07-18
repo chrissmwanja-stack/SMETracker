@@ -1,4 +1,4 @@
-package com.example.smetracker
+package com.vestateck.smetracker
 
 import org.junit.Test
 

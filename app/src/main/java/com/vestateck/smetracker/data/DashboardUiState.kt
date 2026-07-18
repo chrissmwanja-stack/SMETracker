@@ -1,9 +1,9 @@
 // data/DashboardUiState.kt
-package com.example.smetracker.data
+package com.vestateck.smetracker.data
 
-import com.example.smetracker.data.entities.Customer
-import com.example.smetracker.data.entities.InventoryItem
-import com.example.smetracker.data.entities.Sale
+import com.vestateck.smetracker.data.entities.Customer
+import com.vestateck.smetracker.data.entities.InventoryItem
+import com.vestateck.smetracker.data.entities.Sale
 
 data class DashboardUiState(
     val totalRevenue: Double = 0.0,

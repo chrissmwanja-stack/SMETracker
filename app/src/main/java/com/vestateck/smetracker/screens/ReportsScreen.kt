@@ -1,5 +1,5 @@
 // screens/ReportsScreen.kt
-package com.example.smetracker.screens
+package com.vestateck.smetracker.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -11,7 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.example.smetracker.navigation.Screen
+import com.vestateck.smetracker.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -1,4 +1,4 @@
-package com.example.smetracker.notifications
+package com.vestateck.smetracker.notifications
 
 import android.annotation.SuppressLint
 import android.app.NotificationChannel
@@ -6,7 +6,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import com.example.smetracker.data.remote.sync.SyncEngine
+import com.vestateck.smetracker.data.remote.sync.SyncEngine
 
 /**
  * Manages the local notification shown to owners when there are sales or

@@ -1,11 +1,11 @@
 // viewmodel/SMEViewModelFactory.kt
-package com.example.smetracker.viewmodel
+package com.vestateck.smetracker.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import com.example.smetracker.data.remote.auth.SessionManager
-import com.example.smetracker.data.remote.sync.SyncEngine
-import com.example.smetracker.repository.SMERepository
+import com.vestateck.smetracker.data.remote.auth.SessionManager
+import com.vestateck.smetracker.data.remote.sync.SyncEngine
+import com.vestateck.smetracker.repository.SMERepository
 
 class SMEViewModelFactory(
     private val repository: SMERepository,

@@ -1,5 +1,5 @@
 // MainActivity.kt
-package com.example.smetracker
+package com.vestateck.smetracker
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -23,22 +23,22 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.smetracker.data.database.SMEDatabase
-import com.example.smetracker.data.remote.auth.AuthRepository
-import com.example.smetracker.data.remote.auth.AuthViewModel
-import com.example.smetracker.data.remote.auth.BusinessRepository
-import com.example.smetracker.data.remote.model.MemberRole
-import com.example.smetracker.data.remote.auth.SessionManager
-import com.example.smetracker.data.remote.sync.SyncEngine
-import com.example.smetracker.navigation.Screen
-import com.example.smetracker.repository.SMERepository
-import com.example.smetracker.screens.*
-import com.example.smetracker.ui.auth.AuthNavGate
-import com.example.smetracker.ui.auth.AuthViewModelFactory
-import com.example.smetracker.ui.components.OwnerOnlyGate
-import com.example.smetracker.ui.theme.SMETrackerTheme
-import com.example.smetracker.viewmodel.SMEViewModel
-import com.example.smetracker.viewmodel.SMEViewModelFactory
+import com.vestateck.smetracker.data.database.SMEDatabase
+import com.vestateck.smetracker.data.remote.auth.AuthRepository
+import com.vestateck.smetracker.data.remote.auth.AuthViewModel
+import com.vestateck.smetracker.data.remote.auth.BusinessRepository
+import com.vestateck.smetracker.data.remote.model.MemberRole
+import com.vestateck.smetracker.data.remote.auth.SessionManager
+import com.vestateck.smetracker.data.remote.sync.SyncEngine
+import com.vestateck.smetracker.navigation.Screen
+import com.vestateck.smetracker.repository.SMERepository
+import com.vestateck.smetracker.screens.*
+import com.vestateck.smetracker.ui.auth.AuthNavGate
+import com.vestateck.smetracker.ui.auth.AuthViewModelFactory
+import com.vestateck.smetracker.ui.components.OwnerOnlyGate
+import com.vestateck.smetracker.ui.theme.SMETrackerTheme
+import com.vestateck.smetracker.viewmodel.SMEViewModel
+import com.vestateck.smetracker.viewmodel.SMEViewModelFactory
 
 class MainActivity : ComponentActivity() {
     private val database by lazy { SMEDatabase.getDatabase(this) }
@@ -178,7 +178,7 @@ class MainActivity : ComponentActivity() {
                             composable(Screen.Expenses.route) { ExpensesScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.Tasks.route) { TasksScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.AddWorker.route) {
-                                com.example.smetracker.ui.auth.AddWorkerScreen(
+                                com.vestateck.smetracker.ui.auth.AddWorkerScreen(
                                     businessId = currentEntry.first,
                                     businessRepository = businessRepository,
                                     onWorkerAdded = { navController.popBackStack() },

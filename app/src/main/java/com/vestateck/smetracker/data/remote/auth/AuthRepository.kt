@@ -1,4 +1,4 @@
-package com.example.smetracker.data.remote.auth
+package com.vestateck.smetracker.data.remote.auth
 
 import android.app.Activity
 import com.google.firebase.auth.FirebaseAuth

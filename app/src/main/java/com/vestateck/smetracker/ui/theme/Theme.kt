@@ -1,5 +1,5 @@
 // ui/theme/Theme.kt
-package com.example.smetracker.ui.theme
+package com.vestateck.smetracker.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme

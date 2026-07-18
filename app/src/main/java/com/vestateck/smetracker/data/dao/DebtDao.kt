@@ -1,4 +1,4 @@
-package com.example.smetracker.data.dao
+package com.vestateck.smetracker.data.dao
 
 import androidx.room.Dao
 import androidx.room.Query

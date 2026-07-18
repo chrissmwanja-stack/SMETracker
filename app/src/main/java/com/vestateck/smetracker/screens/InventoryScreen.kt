@@ -1,4 +1,4 @@
-package com.example.smetracker.screens
+package com.vestateck.smetracker.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,8 +18,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
-import com.example.smetracker.data.entities.InventoryItem
-import com.example.smetracker.viewmodel.SMEViewModel
+import com.vestateck.smetracker.data.entities.InventoryItem
+import com.vestateck.smetracker.viewmodel.SMEViewModel
 import java.text.NumberFormat
 import java.util.Locale
 

@@ -1,5 +1,5 @@
 // utils/CurrencyUtils.kt
-package com.example.smetracker.utils
+package com.vestateck.smetracker.utils
 
 import java.text.NumberFormat
 import java.util.Locale

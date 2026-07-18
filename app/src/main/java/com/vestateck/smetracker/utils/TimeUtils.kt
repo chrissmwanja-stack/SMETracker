@@ -1,5 +1,5 @@
 // utils/TimeUtils.kt
-package com.example.smetracker.utils
+package com.vestateck.smetracker.utils
 
 import java.util.Calendar
 import java.util.TimeZone

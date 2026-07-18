@@ -1,5 +1,5 @@
 // screens/components/ReportRow.kt
-package com.example.smetracker.screens.components
+package com.vestateck.smetracker.screens.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme

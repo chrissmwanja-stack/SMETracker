@@ -1,4 +1,4 @@
-package com.example.smetracker.ui.theme
+package com.vestateck.smetracker.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle

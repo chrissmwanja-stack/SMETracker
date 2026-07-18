@@ -1,4 +1,4 @@
-package com.example.smetracker.ui.components
+package com.vestateck.smetracker.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

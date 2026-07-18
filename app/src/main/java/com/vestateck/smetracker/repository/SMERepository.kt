@@ -1,8 +1,8 @@
-package com.example.smetracker.repository
+package com.vestateck.smetracker.repository
 
-import com.example.smetracker.data.dao.InventoryDao
-import com.example.smetracker.data.dao.SMEDao
-import com.example.smetracker.data.entities.*
+import com.vestateck.smetracker.data.dao.InventoryDao
+import com.vestateck.smetracker.data.dao.SMEDao
+import com.vestateck.smetracker.data.entities.*
 import kotlinx.coroutines.flow.Flow
 import java.util.*
 

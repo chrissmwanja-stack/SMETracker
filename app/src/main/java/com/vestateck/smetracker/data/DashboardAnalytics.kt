@@ -1,12 +1,12 @@
 // data/DashboardAnalytics.kt
-package com.example.smetracker.data
+package com.vestateck.smetracker.data
 
-import com.example.smetracker.data.entities.Debt
-import com.example.smetracker.data.entities.Expense
-import com.example.smetracker.data.entities.InventoryItem
-import com.example.smetracker.data.entities.PaymentMethod
-import com.example.smetracker.data.entities.Sale
-import com.example.smetracker.utils.TimeUtils
+import com.vestateck.smetracker.data.entities.Debt
+import com.vestateck.smetracker.data.entities.Expense
+import com.vestateck.smetracker.data.entities.InventoryItem
+import com.vestateck.smetracker.data.entities.PaymentMethod
+import com.vestateck.smetracker.data.entities.Sale
+import com.vestateck.smetracker.utils.TimeUtils
 
 data class SalesPeriodData(
     val count: Int,

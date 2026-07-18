@@ -1,4 +1,4 @@
-package com.example.smetracker.screens
+package com.vestateck.smetracker.screens
 
 
 import androidx.compose.foundation.layout.*
@@ -15,8 +15,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import com.example.smetracker.data.entities.Debt
-import com.example.smetracker.viewmodel.SMEViewModel
+import com.vestateck.smetracker.data.entities.Debt
+import com.vestateck.smetracker.viewmodel.SMEViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
