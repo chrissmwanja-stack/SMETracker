@@ -81,6 +81,10 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     testImplementation(libs.junit)
+    // Needed to test SMEViewModel: viewModelScope.launch runs on
+    // Dispatchers.Main, which has no real implementation in a plain JVM
+    // unit test — Dispatchers.setMain(...) below swaps in a test dispatcher.
+    testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
