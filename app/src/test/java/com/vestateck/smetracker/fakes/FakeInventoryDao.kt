@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 
 /**
- * Hand-rolled in-memory fake of InventoryDao — same rationale as
+ * Hand-rolled in-memory fake of InventoryDao - same rationale as
  * FakeSMEDao. applyStockAdjustment is reimplemented directly (rather than
  * inherited as a default `@Transaction` method) since Room generates that
  * implementation at compile time; a plain Kotlin override here just calls
@@ -75,7 +75,7 @@ class FakeInventoryDao : InventoryDao {
         adjustmentsFlow.update { list -> list.filterNot { it.id == adjustment.id } + adjustment }
     }
 
-    // ── Reconciliation (InventoryItem) ───────────────────────────
+    // -- Reconciliation (InventoryItem) --------------------------------
     override fun getUnreconciledItems(): Flow<List<InventoryItem>> =
         itemsFlow.map { list -> list.filterNot { it.costReconciled } }
 
@@ -91,7 +91,7 @@ class FakeInventoryDao : InventoryDao {
         }
     }
 
-    // ── Sync (InventoryItem) ─────────────────────────────────────
+    // -- Sync (InventoryItem) -------------------------------------------
     override suspend fun getPendingSyncItems(): List<InventoryItem> = itemsFlow.value.filter { it.pendingSync }
     override suspend fun clearItemPendingSync(itemId: String) {
         itemsFlow.update { list -> list.map { if (it.id == itemId) it.copy(pendingSync = false) else it } }
@@ -99,5 +99,18 @@ class FakeInventoryDao : InventoryDao {
 
     override suspend fun updateItemCostPrice(itemId: String, costPrice: Double) {
         itemsFlow.update { list -> list.map { if (it.id == itemId) it.copy(costPrice = costPrice) else it } }
+    }
+
+    // Called by InventorySync after a picked photo finishes uploading to
+    // Firebase Storage - records the resulting download URL and clears the
+    // upload-pending flag so pushPending() doesn't re-upload the same file
+    // on the item's next unrelated edit.
+    override suspend fun markImageUploaded(itemId: String, imageUrl: String) {
+        itemsFlow.update { list ->
+            list.map {
+                if (it.id == itemId) it.copy(imageUrl = imageUrl, imagePendingUpload = false)
+                else it
+            }
+        }
     }
 }

@@ -35,7 +35,7 @@ import com.vestateck.smetracker.viewmodel.SMEViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
+
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -516,6 +516,8 @@ private fun InventoryItemDialog(
                                     costPrice = costPrice.toDoubleOrNull() ?: 0.0,
                                     sellingPrice = sellingPrice.toDoubleOrNull() ?: 0.0,
                                     updatedAt = System.currentTimeMillis(),
+                                    recordedBy = item?.recordedBy ?: "",
+                                    costReconciled = item?.costReconciled ?: true,
                                     localImagePath = localImagePath,
                                     imageUrl = imageUrl,
                                     imagePendingUpload = imagePendingUpload
