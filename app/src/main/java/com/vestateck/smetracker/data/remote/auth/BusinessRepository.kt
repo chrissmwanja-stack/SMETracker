@@ -2,6 +2,7 @@ package com.vestateck.smetracker.data.remote.auth
 
 import com.vestateck.smetracker.data.remote.model.Business
 import com.vestateck.smetracker.data.remote.model.MemberRole
+import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
@@ -11,6 +12,9 @@ class BusinessRepository(
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
+    companion object {
+        private const val TAG = "BusinessRepository"
+    }
 
     // Single source of truth for the Firestore role vocabulary. MemberRole's
     // enum constant names ARE "OWNER"/"WORKER" by construction — using
@@ -62,7 +66,13 @@ class BusinessRepository(
             businessRef.set(
                 mapOf(
                     "name" to businessName,
-                    "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                    // Client-side millis, not FieldValue.serverTimestamp() — Business.createdAt
+                    // is typed Long, and every other Remote* model (RemoteCustomer,
+                    // RemoteStockAdjustment) writes a plain Long here too. Mixing in a native
+                    // Firestore Timestamp for this one field was the odd one out and a needless
+                    // risk on toObject() deserialization; nothing currently depends on this being
+                    // server-authoritative.
+                    "createdAt" to System.currentTimeMillis(),
                     "ownerPhone" to ownerPhoneE164
                 )
             ).await()
@@ -211,10 +221,38 @@ class BusinessRepository(
     suspend fun getBusiness(businessId: String): Result<Business> {
         return try {
             val snapshot = firestore.collection("businesses").document(businessId).get().await()
-            val business = snapshot.toObject(Business::class.java)
-                ?: return Result.failure(IllegalStateException("Business not found."))
+            if (!snapshot.exists()) {
+                Log.w(TAG, "getBusiness($businessId): document does not exist")
+                return Result.failure(IllegalStateException("Business not found."))
+            }
+
+            // Manual field-by-field extraction instead of toObject(Business::class.java).
+            // toObject() enforces createdAt's declared type (Long) strictly and throws if
+            // the stored value doesn't match — which happens for every business created
+            // before the createdAt-as-Long fix, since those docs still hold a native
+            // Firestore Timestamp there. Reading the raw value here and coercing it
+            // ourselves means both old (Timestamp) and new (Long) documents parse fine,
+            // with no need to touch existing data.
+            val createdAtRaw = snapshot.get("createdAt")
+            val createdAt = when (createdAtRaw) {
+                is com.google.firebase.Timestamp -> createdAtRaw.toDate().time
+                is Number -> createdAtRaw.toLong()
+                else -> System.currentTimeMillis() // missing/unrecognized — never block on this
+            }
+
+            val business = Business(
+                id = snapshot.id,
+                name = snapshot.getString("name") ?: "",
+                ownerPhone = snapshot.getString("ownerPhone") ?: "",
+                createdAt = createdAt
+            )
             Result.success(business)
         } catch (e: Exception) {
+            // Was previously swallowed into a blank businessName with no
+            // trace of why — e.g. PERMISSION_DENIED (rules) vs. a
+            // deserialization failure (bad field type) look identical to
+            // the caller without this. Surface it.
+            Log.e(TAG, "getBusiness($businessId) failed", e)
             Result.failure(e)
         }
     }
