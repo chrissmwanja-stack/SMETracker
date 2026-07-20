@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Merged into the main manifest for the androidTest APK only — this
+         does not ship in the release/debug app. -->
+
+    <application
+        android:usesCleartextTraffic="true"
+        tools:targetApi="28">
+
+        <!--
+          Minimal host Activity for PhoneAuthProvider.verifyPhoneNumber(),
+          which requires a live Activity to attach to. Not used for any real
+          UI — FirebaseEmulatorRule.signInWithPhoneNumber() launches it via
+          ActivityScenario and immediately hands it to PhoneAuthOptions.
+        -->
+        <activity
+            android:name="com.vestateck.smetracker.testutil.EmulatorHostActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SMETracker" />
+
+    </application>
+
+</manifest>

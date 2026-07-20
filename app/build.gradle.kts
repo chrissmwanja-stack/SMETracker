@@ -101,6 +101,14 @@ dependencies {
     // actually covered.
     androidTestImplementation(libs.room.testing)
     androidTestImplementation(libs.kotlinx.coroutines.test)
+    // FirebaseEmulatorRule (Firestore/Auth-emulator-backed sync tests) needs
+    // the real Firebase SDKs and .await() at androidTest compile time -
+    // these are already `implementation` (not `api`) in the main app deps
+    // above, so androidTest can't see them without declaring its own copies.
+    androidTestImplementation(platform(libs.firebase.bom))
+    androidTestImplementation(libs.firebase.auth)
+    androidTestImplementation(libs.firebase.firestore)
+    androidTestImplementation(libs.kotlinx.coroutines.play.services)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
