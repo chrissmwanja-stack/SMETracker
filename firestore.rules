@@ -113,6 +113,16 @@ service cloud.firestore {
       allow read, write: if isOwnerOf(businessId);
     }
 
+    // Receipt numbering counter - both roles can claim the next number
+    // (either an owner or a worker can record a sale and needs a receipt),
+    // so isMemberOf rather than isOwnerOf. The transaction in
+    // SaleSync.pushPending relies on read+write both being permitted here;
+    // Firestore's transaction retry logic (not these rules) is what
+    // prevents two concurrent claims from colliding.
+    match /businesses/{businessId}/counters/{counterId} {
+      allow read, write: if isMemberOf(businessId);
+    }
+
     match /businesses/{businessId}/customers/{customerId} {
       allow read, create, update: if isMemberOf(businessId);
       allow delete: if isOwnerOf(businessId);

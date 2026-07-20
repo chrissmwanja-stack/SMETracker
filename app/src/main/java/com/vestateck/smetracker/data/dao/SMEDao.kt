@@ -56,6 +56,12 @@ interface SMEDao {
     @Query("UPDATE sales SET pendingSync = 0 WHERE id = :saleId")
     suspend fun clearSalePendingSync(saleId: String)
 
+    // Called by SaleSync.pushPending once a sale has successfully claimed
+    // its authoritative number from businesses/{businessId}/counters/
+    // receiptSequence via a Firestore transaction.
+    @Query("UPDATE sales SET finalReceiptNumber = :finalReceiptNumber WHERE id = :saleId")
+    suspend fun markSaleReceiptFinalized(saleId: String, finalReceiptNumber: String)
+
     // -- Customers ---------------------------------------------------
     @Query("SELECT * FROM customers ORDER BY name ASC")
     fun getAllCustomers(): Flow<List<Customer>>

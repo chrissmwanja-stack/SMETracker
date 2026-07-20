@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 /**
- * Sales (+ SaleFinancials). Extracted from SyncEngine — see that class's
+ * Sales (+ SaleFinancials). Extracted from SyncEngine - see that class's
  * doc comment for the owner/worker split this follows, which mirrors
  * firestore.rules exactly:
  *
@@ -27,6 +27,16 @@ import kotlinx.coroutines.tasks.await
  * - Pulling RemoteSale never touches the locally-merged cost/profit columns
  *   (updateSaleFinancials does that separately), so the two listeners for a
  *   sale can arrive in either order without clobbering each other.
+ *
+ * Receipt numbering: provisionalReceiptNumber is assigned entirely locally
+ * (ReceiptNumberGenerator, at Sale creation) and is never pushed as-is to
+ * Firestore in a way that matters cross-device - the authoritative number
+ * is finalReceiptNumber, claimed here in pushPending() via a Firestore
+ * transaction against businesses/{businessId}/counters/receiptSequence.
+ * Transactions are how two devices coming online at the same moment can't
+ * claim the same number: Firestore retries a transaction if the counter
+ * doc changed between its read and write, so the read-increment-write is
+ * atomic across every client hitting it concurrently.
  */
 class SaleSync(
     private val smeDao: SMEDao,
@@ -42,19 +52,28 @@ class SaleSync(
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         try {
                             val remote = change.document.toObject(RemoteSale::class.java)
-                            // RemoteSale never carries costPrice/profit — preserve whatever
+                            // RemoteSale never carries costPrice/profit - preserve whatever
                             // the saleFinancials listener already merged in (or hasn't yet).
                             val existing = smeDao.getSaleById(remote.id)
                             // existing == null means this sale is new to this device, i.e.
                             // it came from somewhere else (another team member). If that's
                             // true and it's tied to a tracked inventory item, its financials
                             // are unreviewed until an owner explicitly reconciles them (see
-                            // the Reconciliation screen) — a device that creates its own
+                            // the Reconciliation screen) - a device that creates its own
                             // sale already has it in Room before this listener ever fires,
                             // so `existing` won't be null for that case, and this branch is
                             // never reached for sales you recorded yourself.
                             val financialsReconciled = existing?.financialsReconciled
                                 ?: (remote.inventoryItemId == null)
+                            // provisionalReceiptNumber only ever means something on the
+                            // device that generated it - RemoteSale doesn't carry it.
+                            // Preserve this device's own value; a sale pulled in from
+                            // another device (existing == null) has never had one assigned
+                            // here, so fall back to the (possibly still-null) authoritative
+                            // number, or a placeholder if neither exists yet.
+                            val provisionalNumber = existing?.provisionalReceiptNumber
+                                ?: remote.finalReceiptNumber
+                                ?: ""
                             smeDao.insertSale(
                                 Sale(
                                     id = remote.id,
@@ -71,11 +90,13 @@ class SaleSync(
                                         .getOrDefault(PaymentMethod.CASH),
                                     recordedBy = remote.recordedBy,
                                     financialsReconciled = financialsReconciled,
+                                    provisionalReceiptNumber = provisionalNumber,
+                                    finalReceiptNumber = remote.finalReceiptNumber,
                                     pendingSync = false
                                 )
                             )
                         } catch (e: Exception) {
-                            // customerId is a real FK to customers — if this sale's
+                            // customerId is a real FK to customers - if this sale's
                             // snapshot arrives before its linked customer's does (no
                             // ordering guarantee between two independent listeners),
                             // the insert throws. Skip this doc rather than take down
@@ -114,6 +135,28 @@ class SaleSync(
         val pending = smeDao.getPendingSyncSales()
         for (sale in pending) {
             try {
+                // Claim the authoritative receipt number before writing the
+                // sale doc, so the same write already carries it - avoids a
+                // second round-trip and avoids a window where the sale
+                // exists remotely with no number at all. Only claimed once
+                // per sale: if finalReceiptNumber is already set (e.g. a
+                // retry after some other part of this push failed), the
+                // number claimed on the earlier attempt is reused rather
+                // than burning a second number for the same sale.
+                var finalReceiptNumber = sale.finalReceiptNumber
+                if (finalReceiptNumber == null) {
+                    val counterRef = businessRef.collection("counters").document("receiptSequence")
+                    val claimedNumber = firestore.runTransaction { txn ->
+                        val snapshot = txn.get(counterRef)
+                        val current = snapshot.getLong("lastNumber") ?: 0L
+                        val next = current + 1
+                        txn.set(counterRef, mapOf("lastNumber" to next))
+                        next
+                    }.await()
+                    finalReceiptNumber = "INV-" + claimedNumber.toString().padStart(4, '0')
+                    smeDao.markSaleReceiptFinalized(sale.id, finalReceiptNumber)
+                }
+
                 businessRef.collection("sales").document(sale.id)
                     .set(
                         RemoteSale(
@@ -127,16 +170,17 @@ class SaleSync(
                             date = sale.date,
                             paymentMethod = sale.paymentMethod.name,
                             // A blank local recordedBy means this row was just created
-                            // on this device and never round-tripped yet — fill in
+                            // on this device and never round-tripped yet - fill in
                             // myPhone. A non-blank value (e.g. after an owner
                             // reconciles a worker's sale, which re-marks it
                             // pendingSync) is the ORIGINAL creator and must be kept,
                             // not overwritten with whoever is pushing right now.
-                            recordedBy = sale.recordedBy.ifBlank { myPhone }
+                            recordedBy = sale.recordedBy.ifBlank { myPhone },
+                            finalReceiptNumber = finalReceiptNumber
                         )
                     ).await()
 
-                // saleFinancials is owner-write-only — see class doc. A worker's
+                // saleFinancials is owner-write-only - see class doc. A worker's
                 // push never attempts this (it would always be denied).
                 if (role == MemberRole.OWNER) {
                     businessRef.collection("saleFinancials").document(sale.id)
@@ -146,7 +190,11 @@ class SaleSync(
 
                 smeDao.clearSalePendingSync(sale.id)
             } catch (e: Exception) {
-                // Left as pendingSync = true — picked up again on the next requestPush().
+                // Left as pendingSync = true - picked up again on the next requestPush().
+                // If the number-claim transaction succeeded but a later step in this
+                // try block failed, finalReceiptNumber is already persisted locally
+                // (markSaleReceiptFinalized already ran) - the retry above will see
+                // it non-null and skip re-claiming, so no number gets burned twice.
             }
         }
     }

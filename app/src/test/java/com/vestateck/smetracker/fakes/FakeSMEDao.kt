@@ -81,6 +81,10 @@ class FakeSMEDao : SMEDao {
         salesFlow.update { list -> list.map { if (it.id == saleId) it.copy(pendingSync = false) else it } }
     }
 
+    override suspend fun markSaleReceiptFinalized(saleId: String, finalReceiptNumber: String) {
+        salesFlow.update { list -> list.map { if (it.id == saleId) it.copy(finalReceiptNumber = finalReceiptNumber) else it } }
+    }
+
     // -- Customers ---------------------------------------------------
     override fun getAllCustomers(): Flow<List<Customer>> = customersFlow
     override fun searchCustomers(query: String): Flow<List<Customer>> =

@@ -37,6 +37,7 @@ import com.vestateck.smetracker.ui.auth.AuthNavGate
 import com.vestateck.smetracker.ui.auth.AuthViewModelFactory
 import com.vestateck.smetracker.ui.components.OwnerOnlyGate
 import com.vestateck.smetracker.ui.theme.SMETrackerTheme
+import com.vestateck.smetracker.utils.ReceiptNumberGenerator
 import com.vestateck.smetracker.viewmodel.SMEViewModel
 import com.vestateck.smetracker.viewmodel.SMEViewModelFactory
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +48,7 @@ class MainActivity : ComponentActivity() {
     private val database by lazy { SMEDatabase.getDatabase(this) }
 
     // Registered eagerly (not `by lazy`) since ActivityResultLauncher must be
-    // registered before the Activity reaches STARTED — registering it lazily
+    // registered before the Activity reaches STARTED - registering it lazily
     // on first use from inside onEnterApp (called after setContent, i.e.
     // after STARTED) would throw. The callback itself is a no-op: whether the
     // owner grants this or not, the in-app badge on DashboardScreen still
@@ -69,7 +70,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Phase 2 auth dependencies — manual DI, matching the rest of the app.
+    // Phase 2 auth dependencies - manual DI, matching the rest of the app.
     private val authRepository by lazy { AuthRepository() }
     private val sessionManager by lazy { SessionManager(applicationContext) }
     private val businessRepository by lazy { BusinessRepository() }
@@ -77,7 +78,7 @@ class MainActivity : ComponentActivity() {
         AuthViewModelFactory(authRepository, sessionManager)
     }
 
-    // Phase 3 sync — Customer-only proof for now (see SyncEngine's class doc).
+    // Phase 3 sync - Customer-only proof for now (see SyncEngine's class doc).
     // Scoped to lifecycleScope: cancelled automatically on Activity destroy,
     // matching the rest of this app's "no long-lived process-level DI" pattern.
     // start() is safe to call multiple times (no-ops if already listening) and
@@ -85,8 +86,13 @@ class MainActivity : ComponentActivity() {
     // before attaching anything, so it's fine to construct this eagerly.
     private val syncEngine by lazy { SyncEngine(database.smeDao(), database.inventoryDao(), sessionManager, lifecycleScope, applicationContext) }
 
+    // Local-only receipt-number sequence for provisionalReceiptNumber - see
+    // ReceiptNumberGenerator's class doc. SharedPreferences-backed, so this
+    // only needs applicationContext, same as sessionManager above.
+    private val receiptNumberGenerator by lazy { ReceiptNumberGenerator(applicationContext) }
+
     private val viewModelFactory by lazy {
-        SMEViewModelFactory(SMERepository(database.smeDao(), database.inventoryDao()), syncEngine, sessionManager, businessRepository)
+        SMEViewModelFactory(SMERepository(database.smeDao(), database.inventoryDao()), syncEngine, sessionManager, businessRepository, receiptNumberGenerator)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -131,7 +137,7 @@ class MainActivity : ComponentActivity() {
                                     onSignOut = {
                                         // AuthNavGate re-collects sessionManager.sessionState
                                         // fresh the instant `entered` goes null. clearSession()
-                                        // is an async DataStore write (real disk I/O) — flipping
+                                        // is an async DataStore write (real disk I/O) - flipping
                                         // `entered` before it lands meant the first read AuthNavGate
                                         // did could still see the old logged-in session and bounce
                                         // straight back into the app, so sign-out silently no-op'd
@@ -141,11 +147,11 @@ class MainActivity : ComponentActivity() {
                                         authViewModel.signOut {
                                             syncEngine.stop()
                                             // Local Room storage has no businessId scoping on any
-                                            // entity (see SMEDatabase.clearAllTablesSuspending() doc) —
+                                            // entity (see SMEDatabase.clearAllTablesSuspending() doc) -
                                             // without wiping it here, the next sign-in (same device,
                                             // any business, including a freshly created one) starts
                                             // from whatever the previous business left behind. Awaited
-                                            // — not fire-and-forget — and `entered` only flips to null
+                                            // - not fire-and-forget - and `entered` only flips to null
                                             // once the wipe finishes, so AuthNavGate can't route into a
                                             // new sign-in/business-create flow, and SyncEngine can't
                                             // start re-populating tables for the next business, until

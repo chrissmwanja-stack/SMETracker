@@ -22,7 +22,7 @@ import com.vestateck.smetracker.data.entities.Task
 
 @Database(
     entities = [Sale::class, Customer::class, Debt::class, InventoryItem::class, Expense::class, Task::class, StockAdjustment::class],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -145,6 +145,19 @@ abstract class SMEDatabase : RoomDatabase() {
             }
         }
 
+        // v13 -> v14: Sale gained provisionalReceiptNumber and
+        // finalReceiptNumber - backs sale-receipt generation. Existing rows
+        // get provisionalReceiptNumber = '' (blank), which the receipt UI
+        // should treat as "no number assigned" rather than displaying an
+        // empty string - only sales created after this migration go through
+        // SMEViewModel.addSale's ReceiptNumberGenerator call.
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE sales ADD COLUMN provisionalReceiptNumber TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE sales ADD COLUMN finalReceiptNumber TEXT")
+            }
+        }
+
         fun getDatabase(context: Context): SMEDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -152,7 +165,7 @@ abstract class SMEDatabase : RoomDatabase() {
                     SMEDatabase::class.java,
                     "sme_tracker_database"
                 )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     // Safety net for older installs with no migration path defined (v1-v4).
                     // Any new schema change from here on should get its own Migration above
                     // instead of relying on this, or existing user data will be wiped on upgrade.

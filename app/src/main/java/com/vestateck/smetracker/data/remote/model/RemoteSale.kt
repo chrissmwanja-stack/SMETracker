@@ -5,7 +5,7 @@ import com.google.firebase.firestore.DocumentId
 // Firestore path: businesses/{businessId}/sales/{saleId}
 //
 // This is the WORKER-VISIBLE half of a sale. It deliberately excludes costPrice
-// and profit — those live in the linked SaleFinancials doc (same saleId), which
+// and profit - those live in the linked SaleFinancials doc (same saleId), which
 // Firestore Security Rules restrict to role == "owner" only.
 //
 // `amount` stays here because it's the selling price / what the customer paid,
@@ -21,6 +21,9 @@ data class RemoteSale(
     val quantity: Int = 1,
     val date: Long = System.currentTimeMillis(),
     val paymentMethod: String = "CASH",
-    // Phone number (E.164) of whoever recorded this sale — owner or worker.
-    val recordedBy: String = ""
+    // Phone number (E.164) of whoever recorded this sale - owner or worker.
+    val recordedBy: String = "",
+    // Authoritative receipt number (e.g. "INV-0001"), claimed via a
+    // Firestore transaction in SaleSync.pushPending. Null until claimed.
+    val finalReceiptNumber: String? = null
 )

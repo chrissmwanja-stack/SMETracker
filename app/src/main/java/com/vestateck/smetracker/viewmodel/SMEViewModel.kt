@@ -44,7 +44,12 @@ class SMEViewModel(
     // to load the business's display name for the dashboard header - when
     // null (or when there's no session/businessId yet), businessName just
     // stays blank and callers fall back to a default label.
-    private val businessRepository: BusinessRepository? = null
+    private val businessRepository: BusinessRepository? = null,
+    // Nullable for the same reason as syncEngine/sessionManager. Used only
+    // to assign Sale.provisionalReceiptNumber at creation time (see
+    // addSale) - when null, provisionalReceiptNumber stays blank, matching
+    // pre-receipt-feature behavior for tests/previews.
+    private val receiptNumberGenerator: com.vestateck.smetracker.utils.ReceiptNumberGenerator? = null
 ) : ViewModel() {
 
     val sales: StateFlow<List<Sale>> = repository.allSales
@@ -281,6 +286,7 @@ class SMEViewModel(
         // worker's device never has real cost data (see InventoryItemDialog),
         // so its profit here is always 0 and needs an owner's review.
         val financialsReconciled = inventoryItemId == null || isOwner
+        val provisionalReceiptNumber = receiptNumberGenerator?.next(myPhone) ?: ""
 
         repository.insertSale(
             Sale(
@@ -294,7 +300,8 @@ class SMEViewModel(
                 paymentMethod = paymentMethod,
                 date = System.currentTimeMillis(),
                 recordedBy = myPhone,
-                financialsReconciled = financialsReconciled
+                financialsReconciled = financialsReconciled,
+                provisionalReceiptNumber = provisionalReceiptNumber
             )
         )
 
