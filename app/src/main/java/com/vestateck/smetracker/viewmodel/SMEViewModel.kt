@@ -289,7 +289,14 @@ class SMEViewModel(
         paymentMethod: PaymentMethod,
         inventoryItemId: String? = null,
         quantity: Int = 1,
-        customerId: String? = null
+        customerId: String? = null,
+        // One receipt number is meant to cover a whole checkout, not one
+        // product on it - see addSaleLines below, which claims a single
+        // number up front and passes the SAME string into every line's
+        // insertSale call. Null (addSale's plain single-item path) means
+        // "this call IS its own one-item checkout", so a fresh number is
+        // generated here instead.
+        provisionalReceiptNumber: String? = null
     ): Sale? {
         val soldItem = inventoryItemId?.let { id -> inventoryItems.value.find { it.id == id } }
         // Defense-in-depth behind AddSaleScreen's own stock check: reject
@@ -310,7 +317,8 @@ class SMEViewModel(
         // worker's device never has real cost data (see InventoryItemDialog),
         // so its profit here is always 0 and needs an owner's review.
         val financialsReconciled = inventoryItemId == null || isOwner
-        val provisionalReceiptNumber = receiptNumberGenerator?.next(myPhone) ?: ""
+        val resolvedProvisionalReceiptNumber = provisionalReceiptNumber
+            ?: receiptNumberGenerator?.next(myPhone) ?: ""
 
         // Held in a val (not inlined into insertSale's argument) so the same
         // id/fields that get persisted are what's handed back to the caller
@@ -328,7 +336,7 @@ class SMEViewModel(
             date = System.currentTimeMillis(),
             recordedBy = myPhone,
             financialsReconciled = financialsReconciled,
-            provisionalReceiptNumber = provisionalReceiptNumber
+            provisionalReceiptNumber = resolvedProvisionalReceiptNumber
         )
         repository.insertSale(sale)
 
@@ -370,6 +378,14 @@ class SMEViewModel(
             }
             else -> null
         }
+        // One receipt number for this whole checkout, claimed once here and
+        // reused for every line - not one per product. SaleSync.pushPending
+        // mirrors this by claiming a single authoritative number per group
+        // of sales that share a provisionalReceiptNumber, so the two stay
+        // consistent whether the number is being read offline or after sync.
+        val (myPhone, _) = currentSession()
+        val checkoutReceiptNumber = receiptNumberGenerator?.next(myPhone) ?: ""
+
         val created = mutableListOf<Sale>()
         lines.forEach { line ->
             val sale = insertSale(
@@ -379,7 +395,8 @@ class SMEViewModel(
                 amount = line.amount,
                 paymentMethod = paymentMethod,
                 inventoryItemId = line.inventoryItemId,
-                quantity = line.quantity
+                quantity = line.quantity,
+                provisionalReceiptNumber = checkoutReceiptNumber
             )
             if (sale != null) created.add(sale)
         }

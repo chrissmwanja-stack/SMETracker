@@ -76,17 +76,23 @@ The owner/worker split mirrors `firestore.rules` exactly, so a rejected write fr
 
 ### Database (`data/database/SMEDatabase.kt`)
 
-Room database, currently at schema version 10. Most version bumps pre-launch used `fallbackToDestructiveMigration` since there was no user data to preserve yet.
+Room database, currently at schema version 14. Most version bumps pre-launch used `fallbackToDestructiveMigration` since there was no user data to preserve yet.
 
 **Rule going forward:** any schema change from v9→v10 onward must ship a real `Migration` object — no more destructive fallback. See `MIGRATION_9_10` for the pattern (it doesn't touch the locally-merged cost/profit columns, so pulling remote data and reconciling costs locally can't clobber each other regardless of order).
 
 ### Testing
 
-Unit tests cover the pure, Android/Firebase-free logic — `DashboardAnalytics`, `TimeUtils`, `CurrencyUtils`, `MemberRole` parsing. Test fixtures for `Sale`, `Debt`, `Expense`, `InventoryItem`, and `Customer` must pass an explicit `id` string, since their default (`IdGenerator.newId()`) calls `FirebaseFirestore.getInstance()`, which crashes in a plain JVM test.
+Unit tests cover the pure, Android/Firebase-free logic — `DashboardAnalytics`, `TimeUtils`, `CurrencyUtils`, `MemberRole` parsing — plus `SMEViewModel`'s reconciliation math (`reconcileSale`/`reconcileInventoryCost`) in `SMEViewModelReconciliationTest.kt`, using hand-rolled `FakeSMEDao`/`FakeInventoryDao` fixtures (no mocking library in the project). Test fixtures for `Sale`, `Debt`, `Expense`, `InventoryItem`, and `Customer` must pass an explicit `id` string, since their default (`IdGenerator.newId()`) calls `FirebaseFirestore.getInstance()`, which crashes in a plain JVM test.
 
-Not yet covered: `SMEViewModel`'s reconciliation math (`reconcileSale`) against a mocked repository, and `SyncEngine` itself (would need a fake/mocked `Firestore` instance).
+Not yet covered: `SyncEngine` itself (would need a fake/mocked `Firestore` instance).
 
 ## Known follow-ups
 
-- `SyncEngine.kt` is ~710 lines and the most conceptually dense file in the repo — a candidate for splitting once sync behavior stabilizes (e.g. one file per entity, or read-path/write-path separation).
 - Hilt DI is scaffolded but not wired in (`di/DatabaseModule.kt` is commented out); DI is currently manual in `MainActivity.kt`.
+
+## Receipts
+
+Sale receipts use a provisional-now/reconciled-later pattern, matching the cost/profit reconciliation shape used elsewhere in the app:
+
+- **Provisional number:** `ReceiptNumberGenerator` (`utils/ReceiptNumberGenerator.kt`) mints a locally-scoped receipt number the instant a sale is recorded, so a receipt can be shown/shared/printed fully offline. Format is `{last 4 digits of phone}-{6-digit local sequence}` (e.g. `0771-000042`) — two devices can't collide (different phone suffix), and a device's own sequence only increases, even across restarts (SharedPreferences-backed).
+- **Authoritative number:** never the provisional one. `Sale.finalReceiptNumber` is claimed via a Firestore transaction in `SaleSync.pushPending` once the device is online, giving a real global sequence number.

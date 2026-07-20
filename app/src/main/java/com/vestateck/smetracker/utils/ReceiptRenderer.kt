@@ -33,12 +33,13 @@ data class ReceiptLineData(
 /**
  * Everything needed to render a receipt for one "checkout" - i.e. every Sale
  * row created together by a single AddSaleScreen submission (see
- * SMEViewModel.addSaleLines). Those rows share one customer, date, and
- * payment method by construction, but each gets its OWN provisional/final
- * receipt number (see Sale's class doc, and SaleSync.pushPending). This
- * surfaces the FIRST line's number as "the" receipt number for the whole
- * transaction - a customer reads one slip, even though the backend books
- * each product as its own row.
+ * SMEViewModel.addSaleLines). Those rows share one customer, date, payment
+ * method, AND receipt number by construction - addSaleLines claims one
+ * provisionalReceiptNumber for the whole checkout and SaleSync.pushPending
+ * claims one finalReceiptNumber per group of rows that share it (see both
+ * doc comments), even though each product is still booked as its own Sale
+ * row. Reading it off `sales.first()` here is just convenience, not a
+ * "pick one of several different numbers" choice.
  */
 data class ReceiptData(
     val businessName: String,

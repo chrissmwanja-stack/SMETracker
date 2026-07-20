@@ -59,14 +59,19 @@ data class Sale(
     // Receipt numbering, provisional-now/reconciled-later - see
     // ReceiptNumberGenerator and SaleSync.pushPending's class docs.
     //   - provisionalReceiptNumber: assigned locally the instant this Sale
-    //     is created (SMEViewModel.addSale), works fully offline, always
-    //     non-null. Device-scoped format, never collides across devices.
-    //   - finalReceiptNumber: the authoritative global sequence number
-    //     (e.g. "INV-0001"), claimed via a Firestore transaction against
+    //     is created (SMEViewModel.addSale/addSaleLines), works fully
+    //     offline, always non-null. Device-scoped format, never collides
+    //     across devices. Shared across every Sale row created together in
+    //     one checkout (addSaleLines claims it once, not once per row) -
+    //     this is how SaleSync.pushPending later regroups those rows back
+    //     into the same checkout for authoritative numbering.
+    //   - finalReceiptNumber: the authoritative sequence number (e.g.
+    //     "INV-0001"), claimed via a Firestore transaction against
     //     businesses/{businessId}/counters/receiptSequence once this
-    //     device is online. Null until that claim succeeds. The receipt
-    //     document should display this when present, falling back to
-    //     provisionalReceiptNumber otherwise.
+    //     device is online - one claim per checkout (i.e. per distinct
+    //     provisionalReceiptNumber), not one per row. Null until that
+    //     claim succeeds. The receipt document should display this when
+    //     present, falling back to provisionalReceiptNumber otherwise.
     @ColumnInfo(defaultValue = "''") val provisionalReceiptNumber: String = "",
     val finalReceiptNumber: String? = null,
     val pendingSync: Boolean = true

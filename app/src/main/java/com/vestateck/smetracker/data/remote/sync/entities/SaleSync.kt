@@ -29,14 +29,18 @@ import kotlinx.coroutines.tasks.await
  *   sale can arrive in either order without clobbering each other.
  *
  * Receipt numbering: provisionalReceiptNumber is assigned entirely locally
- * (ReceiptNumberGenerator, at Sale creation) and is never pushed as-is to
- * Firestore in a way that matters cross-device - the authoritative number
- * is finalReceiptNumber, claimed here in pushPending() via a Firestore
- * transaction against businesses/{businessId}/counters/receiptSequence.
- * Transactions are how two devices coming online at the same moment can't
- * claim the same number: Firestore retries a transaction if the counter
- * doc changed between its read and write, so the read-increment-write is
- * atomic across every client hitting it concurrently.
+ * (ReceiptNumberGenerator) once per checkout - not once per product - by
+ * SMEViewModel.addSaleLines (or addSale, for a single-item "checkout").
+ * It's never pushed as-is to Firestore in a way that matters cross-device -
+ * the authoritative number is finalReceiptNumber, claimed here in
+ * pushPending() via a Firestore transaction against
+ * businesses/{businessId}/counters/receiptSequence, once per group of Sale
+ * rows that share a provisionalReceiptNumber (i.e. once per checkout, not
+ * once per row). Transactions are how two devices coming online at the same
+ * moment can't claim the same number: Firestore retries a transaction if
+ * the counter doc changed between its read and write, so the
+ * read-increment-write is atomic across every client hitting it
+ * concurrently.
  */
 class SaleSync(
     private val smeDao: SMEDao,
@@ -133,17 +137,32 @@ class SaleSync(
     suspend fun pushPending(businessId: String, myPhone: String, role: MemberRole) {
         val businessRef = firestore.collection("businesses").document(businessId)
         val pending = smeDao.getPendingSyncSales()
-        for (sale in pending) {
+        // Sale rows created together in one checkout (SMEViewModel.addSaleLines)
+        // share one provisionalReceiptNumber, assigned once for the whole
+        // checkout rather than once per product - see that function's doc
+        // comment. Grouping on it here reconstructs the checkout so the
+        // whole group claims ONE authoritative number, not one per line
+        // item. A single-item addSale call is just a checkout of size one,
+        // so it falls out of this same grouping with no special-casing.
+        // ifBlank falls back to the sale's own id: a blank provisionalReceiptNumber
+        // shouldn't happen in production (MainActivity always wires a real
+        // ReceiptNumberGenerator), but if it ever did, grouping unrelated
+        // sales together under one shared "" key would wrongly merge them
+        // into a single receipt number - falling back to a unique id keeps
+        // each such sale its own one-item group instead.
+        val checkouts = pending.groupBy { sale -> sale.provisionalReceiptNumber.ifBlank { sale.id } }
+        for ((_, checkout) in checkouts) {
             try {
-                // Claim the authoritative receipt number before writing the
-                // sale doc, so the same write already carries it - avoids a
-                // second round-trip and avoids a window where the sale
+                // Claim the authoritative receipt number before writing any
+                // sale doc in this group, so those writes already carry it -
+                // avoids a second round-trip and a window where a sale
                 // exists remotely with no number at all. Only claimed once
-                // per sale: if finalReceiptNumber is already set (e.g. a
-                // retry after some other part of this push failed), the
-                // number claimed on the earlier attempt is reused rather
-                // than burning a second number for the same sale.
-                var finalReceiptNumber = sale.finalReceiptNumber
+                // per checkout: if any member of the group already has
+                // finalReceiptNumber set (e.g. a retry after a previous push
+                // claimed a number but failed partway through writing this
+                // group), that number is reused rather than burning a new
+                // one for the same checkout.
+                var finalReceiptNumber = checkout.firstNotNullOfOrNull { it.finalReceiptNumber }
                 if (finalReceiptNumber == null) {
                     val counterRef = businessRef.collection("counters").document("receiptSequence")
                     val claimedNumber = firestore.runTransaction { txn ->
@@ -154,47 +173,60 @@ class SaleSync(
                         next
                     }.await()
                     finalReceiptNumber = "INV-" + claimedNumber.toString().padStart(4, '0')
-                    smeDao.markSaleReceiptFinalized(sale.id, finalReceiptNumber)
+                }
+                // Persist the claimed number to every member of the group up
+                // front, before any remote sale-doc writes below. That way,
+                // if this process dies partway through the writes that
+                // follow, a retry finds the number already recorded locally
+                // for the whole group (via the firstNotNullOfOrNull check
+                // above) instead of claiming a second one for the checkout.
+                for (sale in checkout) {
+                    if (sale.finalReceiptNumber == null) {
+                        smeDao.markSaleReceiptFinalized(sale.id, finalReceiptNumber)
+                    }
                 }
 
-                businessRef.collection("sales").document(sale.id)
-                    .set(
-                        RemoteSale(
-                            id = sale.id,
-                            customerId = sale.customerId,
-                            customerName = sale.customerName,
-                            description = sale.description,
-                            amount = sale.amount,
-                            inventoryItemId = sale.inventoryItemId,
-                            quantity = sale.quantity,
-                            date = sale.date,
-                            paymentMethod = sale.paymentMethod.name,
-                            // A blank local recordedBy means this row was just created
-                            // on this device and never round-tripped yet - fill in
-                            // myPhone. A non-blank value (e.g. after an owner
-                            // reconciles a worker's sale, which re-marks it
-                            // pendingSync) is the ORIGINAL creator and must be kept,
-                            // not overwritten with whoever is pushing right now.
-                            recordedBy = sale.recordedBy.ifBlank { myPhone },
-                            finalReceiptNumber = finalReceiptNumber
-                        )
-                    ).await()
+                for (sale in checkout) {
+                    businessRef.collection("sales").document(sale.id)
+                        .set(
+                            RemoteSale(
+                                id = sale.id,
+                                customerId = sale.customerId,
+                                customerName = sale.customerName,
+                                description = sale.description,
+                                amount = sale.amount,
+                                inventoryItemId = sale.inventoryItemId,
+                                quantity = sale.quantity,
+                                date = sale.date,
+                                paymentMethod = sale.paymentMethod.name,
+                                // A blank local recordedBy means this row was just created
+                                // on this device and never round-tripped yet - fill in
+                                // myPhone. A non-blank value (e.g. after an owner
+                                // reconciles a worker's sale, which re-marks it
+                                // pendingSync) is the ORIGINAL creator and must be kept,
+                                // not overwritten with whoever is pushing right now.
+                                recordedBy = sale.recordedBy.ifBlank { myPhone },
+                                finalReceiptNumber = finalReceiptNumber
+                            )
+                        ).await()
 
-                // saleFinancials is owner-write-only - see class doc. A worker's
-                // push never attempts this (it would always be denied).
-                if (role == MemberRole.OWNER) {
-                    businessRef.collection("saleFinancials").document(sale.id)
-                        .set(SaleFinancials(saleId = sale.id, costPrice = sale.costPriceSnapshot, profit = sale.profit))
-                        .await()
+                    // saleFinancials is owner-write-only - see class doc. A worker's
+                    // push never attempts this (it would always be denied).
+                    if (role == MemberRole.OWNER) {
+                        businessRef.collection("saleFinancials").document(sale.id)
+                            .set(SaleFinancials(saleId = sale.id, costPrice = sale.costPriceSnapshot, profit = sale.profit))
+                            .await()
+                    }
+
+                    smeDao.clearSalePendingSync(sale.id)
                 }
-
-                smeDao.clearSalePendingSync(sale.id)
             } catch (e: Exception) {
-                // Left as pendingSync = true - picked up again on the next requestPush().
-                // If the number-claim transaction succeeded but a later step in this
-                // try block failed, finalReceiptNumber is already persisted locally
-                // (markSaleReceiptFinalized already ran) - the retry above will see
-                // it non-null and skip re-claiming, so no number gets burned twice.
+                // Whichever rows in this checkout haven't cleared pendingSync
+                // yet are picked up again on the next requestPush() - other
+                // checkouts in `checkouts` are unaffected, since each one is
+                // caught independently. The number-claim (if it happened) is
+                // already persisted locally per the loop above, so a retry
+                // won't burn a second number for this checkout.
             }
         }
     }
