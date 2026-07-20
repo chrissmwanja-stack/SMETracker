@@ -244,6 +244,9 @@ class BusinessRepository(
                 id = snapshot.id,
                 name = snapshot.getString("name") ?: "",
                 ownerPhone = snapshot.getString("ownerPhone") ?: "",
+                // Missing on any business doc created before this field existed —
+                // same "just default it" treatment as createdAt above, no backfill needed.
+                address = snapshot.getString("address") ?: "",
                 createdAt = createdAt
             )
             Result.success(business)
@@ -253,6 +256,29 @@ class BusinessRepository(
             // deserialization failure (bad field type) look identical to
             // the caller without this. Surface it.
             Log.e(TAG, "getBusiness($businessId) failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Owner-only: update the business's postal/physical address, shown on
+     * receipts (Chunk B) and in the Business Settings screen.
+     *
+     * Uses a partial `.update()`, not `.set()` — firestore.rules' businesses
+     * update rule requires `request.resource.data.ownerPhone ==
+     * resource.data.ownerPhone`, and request.resource.data is the *resulting*
+     * document after the write. A partial update only touches the `address`
+     * field, so ownerPhone (and name, createdAt) pass through unchanged and
+     * the equality check is satisfied automatically — no need to re-send them.
+     */
+    suspend fun updateBusinessAddress(businessId: String, address: String): Result<Unit> {
+        return try {
+            firestore.collection("businesses").document(businessId)
+                .update("address", address)
+                .await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "updateBusinessAddress($businessId) failed", e)
             Result.failure(e)
         }
     }

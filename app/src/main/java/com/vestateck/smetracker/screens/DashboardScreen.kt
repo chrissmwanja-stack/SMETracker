@@ -39,7 +39,8 @@ fun DashboardScreen(
     navController: NavController,
     onSignOut: () -> Unit = {},
     isOwner: Boolean = false,
-    onAddWorker: () -> Unit = {}
+    onAddWorker: () -> Unit = {},
+    onBusinessSettings: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val businessName by viewModel.businessName.collectAsState()
@@ -104,6 +105,15 @@ fun DashboardScreen(
                             Icon(
                                 Icons.Default.PersonAdd,
                                 contentDescription = "Add worker",
+                                tint = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    }
+                    if (isOwner) {
+                        IconButton(onClick = onBusinessSettings) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "Business settings",
                                 tint = MaterialTheme.colorScheme.onPrimary
                             )
                         }

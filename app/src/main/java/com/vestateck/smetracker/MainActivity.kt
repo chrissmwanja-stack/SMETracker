@@ -165,7 +165,8 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     isOwner = currentEntry.second == MemberRole.OWNER,
-                                    onAddWorker = { navController.navigate(Screen.AddWorker.route) }
+                                    onAddWorker = { navController.navigate(Screen.AddWorker.route) },
+                                    onBusinessSettings = { navController.navigate(Screen.BusinessSettings.route) }
                                 )
                             }
                             composable(Screen.AddSale.route) { AddSaleScreen(viewModel = viewModel, navController = navController) }
@@ -217,6 +218,13 @@ class MainActivity : ComponentActivity() {
                                     businessRepository = businessRepository,
                                     onWorkerAdded = { navController.popBackStack() },
                                     onCancel = { navController.popBackStack() }
+                                )
+                            }
+                            composable(Screen.BusinessSettings.route) {
+                                com.vestateck.smetracker.ui.auth.BusinessSettingsScreen(
+                                    businessId = currentEntry.first,
+                                    businessRepository = businessRepository,
+                                    onBack = { navController.popBackStack() }
                                 )
                             }
                         }
