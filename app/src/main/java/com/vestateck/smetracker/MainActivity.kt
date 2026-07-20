@@ -20,9 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.vestateck.smetracker.data.database.SMEDatabase
 import com.vestateck.smetracker.data.remote.auth.AuthRepository
 import com.vestateck.smetracker.data.remote.auth.AuthViewModel
@@ -226,6 +228,16 @@ class MainActivity : ComponentActivity() {
                                     businessRepository = businessRepository,
                                     onBack = { navController.popBackStack() }
                                 )
+                            }
+                            composable(
+                                Screen.SaleReceipt.route,
+                                arguments = listOf(navArgument("saleIds") { type = NavType.StringType })
+                            ) { backStackEntry ->
+                                val saleIds = backStackEntry.arguments?.getString("saleIds")
+                                    ?.split(",")
+                                    ?.filter { it.isNotBlank() }
+                                    ?: emptyList()
+                                SaleReceiptScreen(saleIds = saleIds, viewModel = viewModel, navController = navController)
                             }
                         }
                     }

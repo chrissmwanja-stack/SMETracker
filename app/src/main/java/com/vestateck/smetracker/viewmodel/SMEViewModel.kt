@@ -8,6 +8,7 @@ import com.vestateck.smetracker.data.DashboardUiState
 import com.vestateck.smetracker.data.entities.*
 import com.vestateck.smetracker.data.remote.auth.BusinessRepository
 import com.vestateck.smetracker.data.remote.auth.SessionManager
+import com.vestateck.smetracker.data.remote.model.Business
 import com.vestateck.smetracker.data.remote.sync.SyncEngine
 import com.vestateck.smetracker.repository.SMERepository
 import com.vestateck.smetracker.utils.IdGenerator
@@ -82,22 +83,27 @@ class SMEViewModel(
     ) { sales, items -> (sales + items).toInt() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    // Business display name for the dashboard header. Loaded once per
-    // businessId change rather than folded into the uiState combine() chain
-    // above - the business's own name essentially never changes during a
-    // session, so there's no need to re-fetch it on every sales/customers/etc.
-    // update. Falls back to blank if there's no session, no businessId yet,
-    // or the fetch fails; callers should show a default label in that case.
-    val businessName: StateFlow<String> = (sessionManager?.sessionState ?: flowOf(null))
+    // Full business record (name/phone/address) for the dashboard header and
+    // the sale receipt document (Chunk B), loaded once per businessId change
+    // rather than folded into the uiState combine() chain above - the
+    // business's own details essentially never change during a session, so
+    // there's no need to re-fetch on every sales/customers/etc. update.
+    // Stays null if there's no session, no businessId yet, or the fetch
+    // fails; callers should fall back to a sensible default in that case.
+    val business: StateFlow<Business?> = (sessionManager?.sessionState ?: flowOf(null))
         .map { it?.businessId }
         .distinctUntilChanged()
         .map { businessId ->
             if (businessId == null || businessRepository == null) {
-                ""
+                null
             } else {
-                businessRepository.getBusiness(businessId).getOrNull()?.name ?: ""
+                businessRepository.getBusiness(businessId).getOrNull()
             }
         }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val businessName: StateFlow<String> = business
+        .map { it?.name ?: "" }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
 
     // Snapshot of "who's recording this and is it trustworthy", read fresh at
@@ -267,6 +273,24 @@ class SMEViewModel(
         // sale with no saved customer), not an error.
         customerId: String? = null
     ) = viewModelScope.launch {
+        insertSale(customerName, description, amount, paymentMethod, inventoryItemId, quantity, customerId)
+        syncEngine?.requestPush()
+    }
+
+    // Core of addSale, factored out so addSaleLines (below) can await each
+    // insert and hand the whole batch of created Sale rows back to its
+    // caller (e.g. AddSaleScreen, to build the post-save receipt - see
+    // ReceiptData.from). addSale's own public signature above stays
+    // fire-and-forget, unchanged for existing callers.
+    private suspend fun insertSale(
+        customerName: String,
+        description: String,
+        amount: Double,
+        paymentMethod: PaymentMethod,
+        inventoryItemId: String? = null,
+        quantity: Int = 1,
+        customerId: String? = null
+    ): Sale? {
         val soldItem = inventoryItemId?.let { id -> inventoryItems.value.find { it.id == id } }
         // Defense-in-depth behind AddSaleScreen's own stock check: reject
         // outright rather than silently clamping or partially applying if
@@ -276,7 +300,7 @@ class SMEViewModel(
         // InventoryDao), so this is the only thing stopping a future caller
         // that skips screen-level validation from pushing quantity negative.
         if (inventoryItemId != null && (soldItem == null || quantity > soldItem.quantity)) {
-            return@launch
+            return null
         }
         val profit = soldItem?.let { (it.sellingPrice - it.costPrice) * quantity } ?: 0.0
         val (myPhone, isOwner) = currentSession()
@@ -288,27 +312,30 @@ class SMEViewModel(
         val financialsReconciled = inventoryItemId == null || isOwner
         val provisionalReceiptNumber = receiptNumberGenerator?.next(myPhone) ?: ""
 
-        repository.insertSale(
-            Sale(
-                customerId = customerId,
-                customerName = customerName,
-                description = description,
-                amount = amount,
-                profit = profit,
-                inventoryItemId = inventoryItemId,
-                quantity = quantity,
-                paymentMethod = paymentMethod,
-                date = System.currentTimeMillis(),
-                recordedBy = myPhone,
-                financialsReconciled = financialsReconciled,
-                provisionalReceiptNumber = provisionalReceiptNumber
-            )
+        // Held in a val (not inlined into insertSale's argument) so the same
+        // id/fields that get persisted are what's handed back to the caller
+        // - Sale's id is generated client-side at construction (IdGenerator),
+        // so this object already reflects exactly what's in the DB.
+        val sale = Sale(
+            customerId = customerId,
+            customerName = customerName,
+            description = description,
+            amount = amount,
+            profit = profit,
+            inventoryItemId = inventoryItemId,
+            quantity = quantity,
+            paymentMethod = paymentMethod,
+            date = System.currentTimeMillis(),
+            recordedBy = myPhone,
+            financialsReconciled = financialsReconciled,
+            provisionalReceiptNumber = provisionalReceiptNumber
         )
+        repository.insertSale(sale)
 
         if (soldItem != null) {
             repository.recordSaleStockAdjustment(soldItem.id, quantity)
         }
-        syncEngine?.requestPush()
+        return sale
     }
 
     // Entry point for AddSaleScreen's "cart" of line items. Handles the one
@@ -324,7 +351,15 @@ class SMEViewModel(
         selectedCustomerId: String?,
         saveAsNewCustomer: Boolean,
         paymentMethod: PaymentMethod,
-        lines: List<SaleLineInput>
+        lines: List<SaleLineInput>,
+        // Called once, after every line has been attempted, with every Sale
+        // row this checkout actually created (a line that failed the stock
+        // check inside insertSale is simply omitted, not retried). Defaults
+        // to a no-op so existing callers don't need to change.
+        // AddSaleScreen uses this to navigate to the receipt screen with the
+        // real, persisted Sale rows rather than re-deriving them by matching
+        // timestamp/customer back out of the sales flow.
+        onSalesCreated: (List<Sale>) -> Unit = {}
     ) = viewModelScope.launch {
         val resolvedCustomerId = when {
             selectedCustomerId != null -> selectedCustomerId
@@ -335,8 +370,9 @@ class SMEViewModel(
             }
             else -> null
         }
+        val created = mutableListOf<Sale>()
         lines.forEach { line ->
-            addSale(
+            val sale = insertSale(
                 customerName = customerName,
                 customerId = resolvedCustomerId,
                 description = line.description,
@@ -345,8 +381,10 @@ class SMEViewModel(
                 inventoryItemId = line.inventoryItemId,
                 quantity = line.quantity
             )
+            if (sale != null) created.add(sale)
         }
         syncEngine?.requestPush()
+        onSalesCreated(created)
     }
 
     fun deleteSale(sale: Sale) = viewModelScope.launch {

@@ -19,5 +19,12 @@ sealed class Screen(val route: String) {
     object Tasks : Screen("tasks")
     object AddWorker : Screen("add_worker")
     object BusinessSettings : Screen("business_settings")
+    // saleIds: comma-joined Sale.id list from one addSaleLines() checkout -
+    // see SMEViewModel.addSaleLines' onSalesCreated callback and
+    // ReceiptData.from. IDs are plain UUID strings (IdGenerator.newId()),
+    // so joining with "," is safe - none of them can contain a comma.
+    object SaleReceipt : Screen("sale_receipt/{saleIds}") {
+        fun createRoute(saleIds: List<String>) = "sale_receipt/${saleIds.joinToString(",")}"
+    }
     object Reconciliation : Screen("reconciliation")
 }

@@ -21,6 +21,7 @@ import androidx.navigation.NavController
 import com.vestateck.smetracker.data.entities.Customer
 import com.vestateck.smetracker.data.entities.InventoryItem
 import com.vestateck.smetracker.data.entities.PaymentMethod
+import com.vestateck.smetracker.navigation.Screen
 import com.vestateck.smetracker.utils.CurrencyUtils
 import com.vestateck.smetracker.viewmodel.SMEViewModel
 import com.vestateck.smetracker.viewmodel.SaleLineInput
@@ -265,9 +266,11 @@ fun AddSaleScreen(viewModel: SMEViewModel, navController: NavController) {
             }
 
             Spacer(Modifier.height(4.dp))
+            var isSaving by remember { mutableStateOf(false) }
             Button(
                 onClick = {
-                    if (!canSave) return@Button
+                    if (!canSave || isSaving) return@Button
+                    isSaving = true
                     // One Sale row per line item, matching the app's existing
                     // one-item-per-sale data model (Reports/Reconciliation
                     // both operate on individual Sale rows) — this just lets
@@ -276,6 +279,12 @@ fun AddSaleScreen(viewModel: SMEViewModel, navController: NavController) {
                     // addSaleLines resolves/creates the customer once up
                     // front (honoring the "Save as new customer" toggle) so
                     // every line shares the same customerId.
+                    //
+                    // Doesn't pop back immediately - waits for
+                    // onSalesCreated (the real, persisted Sale rows) and
+                    // navigates to the receipt screen instead, replacing
+                    // this screen in the back stack so its own back arrow
+                    // goes straight to Dashboard.
                     viewModel.addSaleLines(
                         customerName = customerName,
                         selectedCustomerId = selectedCustomerId,
@@ -288,14 +297,29 @@ fun AddSaleScreen(viewModel: SMEViewModel, navController: NavController) {
                                 inventoryItemId = line.selectedItem?.id,
                                 quantity = line.quantityInput.toIntOrNull() ?: 1
                             )
+                        },
+                        onSalesCreated = { created ->
+                            if (created.isEmpty()) {
+                                // Every line failed (e.g. stock changed underneath
+                                // this screen between validation and save) - nothing
+                                // to show a receipt for, so just back out as before.
+                                navController.popBackStack()
+                            } else {
+                                navController.navigate(Screen.SaleReceipt.createRoute(created.map { it.id })) {
+                                    popUpTo(Screen.AddSale.route) { inclusive = true }
+                                }
+                            }
                         }
                     )
-                    navController.popBackStack()
                 },
-                enabled = canSave,
+                enabled = canSave && !isSaving,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(if (lineItems.size > 1) "Save Sale (${lineItems.size} items)" else "Save Sale")
+                if (isSaving) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Text(if (lineItems.size > 1) "Save Sale (${lineItems.size} items)" else "Save Sale")
+                }
             }
         }
     }
