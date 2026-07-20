@@ -95,6 +95,12 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+    // In-memory Room instance for SMEDatabaseTest - exercises real DAOs/SQL
+    // (unlike the FakeSMEDao/FakeInventoryDao used in JVM unit tests), so
+    // Room-generated code like clearSyncedDataSuspending()'s transaction is
+    // actually covered.
+    androidTestImplementation(libs.room.testing)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

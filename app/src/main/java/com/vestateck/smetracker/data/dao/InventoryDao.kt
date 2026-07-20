@@ -60,6 +60,9 @@ interface InventoryDao {
     @Query("UPDATE stock_adjustments SET pendingSync = 0 WHERE id = :adjustmentId")
     suspend fun clearAdjustmentPendingSync(adjustmentId: String)
 
+    @Query("DELETE FROM stock_adjustments WHERE pendingSync = 0")
+    suspend fun deleteSyncedAdjustments()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAdjustmentFromRemote(adjustment: StockAdjustment)
 
@@ -85,6 +88,9 @@ interface InventoryDao {
 
     @Query("UPDATE inventory_items SET pendingSync = 0 WHERE id = :itemId")
     suspend fun clearItemPendingSync(itemId: String)
+
+    @Query("DELETE FROM inventory_items WHERE pendingSync = 0")
+    suspend fun deleteSyncedItems()
 
     // Sync pull, cost half only: costPrice comes from the OWNER-ONLY
     // inventoryCosts collection, separate from the worker-visible inventory

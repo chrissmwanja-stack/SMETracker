@@ -85,6 +85,10 @@ class FakeSMEDao : SMEDao {
         salesFlow.update { list -> list.map { if (it.id == saleId) it.copy(finalReceiptNumber = finalReceiptNumber) else it } }
     }
 
+    override suspend fun deleteSyncedSales() {
+        salesFlow.update { list -> list.filter { it.pendingSync } }
+    }
+
     // -- Customers ---------------------------------------------------
     override fun getAllCustomers(): Flow<List<Customer>> = customersFlow
     override fun searchCustomers(query: String): Flow<List<Customer>> =
@@ -106,6 +110,10 @@ class FakeSMEDao : SMEDao {
     override suspend fun getPendingSyncCustomers(): List<Customer> = customersFlow.value.filter { it.pendingSync }
     override suspend fun clearCustomerPendingSync(customerId: String) {
         customersFlow.update { list -> list.map { if (it.id == customerId) it.copy(pendingSync = false) else it } }
+    }
+
+    override suspend fun deleteSyncedCustomers() {
+        customersFlow.update { list -> list.filter { it.pendingSync } }
     }
 
     // -- Debts ---------------------------------------------------------
@@ -130,6 +138,10 @@ class FakeSMEDao : SMEDao {
     override suspend fun getPendingSyncDebts(): List<Debt> = debtsFlow.value.filter { it.pendingSync }
     override suspend fun clearDebtPendingSync(debtId: String) {
         debtsFlow.update { list -> list.map { if (it.id == debtId) it.copy(pendingSync = false) else it } }
+    }
+
+    override suspend fun deleteSyncedDebts() {
+        debtsFlow.update { list -> list.filter { it.pendingSync } }
     }
 
     // -- Expenses --------------------------------------------------
@@ -160,6 +172,10 @@ class FakeSMEDao : SMEDao {
         }
     }
 
+    override suspend fun deleteSyncedExpenses() {
+        expensesFlow.update { list -> list.filter { it.pendingSync } }
+    }
+
     // -- Tasks -----------------------------------------------------
     override fun getPendingTasks(): Flow<List<Task>> = tasksFlow.map { list -> list.filterNot { it.isCompleted } }
     override fun getPendingTaskCount(): Flow<Long> = tasksFlow.map { list -> list.count { !it.isCompleted }.toLong() }
@@ -182,5 +198,9 @@ class FakeSMEDao : SMEDao {
     override suspend fun getPendingSyncTasks(): List<Task> = tasksFlow.value.filter { it.pendingSync }
     override suspend fun clearTaskPendingSync(taskId: String) {
         tasksFlow.update { list -> list.map { if (it.id == taskId) it.copy(pendingSync = false) else it } }
+    }
+
+    override suspend fun deleteSyncedTasks() {
+        tasksFlow.update { list -> list.filter { it.pendingSync } }
     }
 }

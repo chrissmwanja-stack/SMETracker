@@ -71,6 +71,10 @@ class FakeInventoryDao : InventoryDao {
         adjustmentsFlow.update { list -> list.map { if (it.id == adjustmentId) it.copy(pendingSync = false) else it } }
     }
 
+    override suspend fun deleteSyncedAdjustments() {
+        adjustmentsFlow.update { list -> list.filter { it.pendingSync } }
+    }
+
     override suspend fun insertAdjustmentFromRemote(adjustment: StockAdjustment) {
         adjustmentsFlow.update { list -> list.filterNot { it.id == adjustment.id } + adjustment }
     }
@@ -95,6 +99,10 @@ class FakeInventoryDao : InventoryDao {
     override suspend fun getPendingSyncItems(): List<InventoryItem> = itemsFlow.value.filter { it.pendingSync }
     override suspend fun clearItemPendingSync(itemId: String) {
         itemsFlow.update { list -> list.map { if (it.id == itemId) it.copy(pendingSync = false) else it } }
+    }
+
+    override suspend fun deleteSyncedItems() {
+        itemsFlow.update { list -> list.filter { it.pendingSync } }
     }
 
     override suspend fun updateItemCostPrice(itemId: String, costPrice: Double) {

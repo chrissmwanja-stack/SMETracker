@@ -149,17 +149,22 @@ class MainActivity : ComponentActivity() {
                                         authViewModel.signOut {
                                             syncEngine.stop()
                                             // Local Room storage has no businessId scoping on any
-                                            // entity (see SMEDatabase.clearAllTablesSuspending() doc) -
-                                            // without wiping it here, the next sign-in (same device,
+                                            // entity (see SMEDatabase.clearSyncedDataSuspending() doc) -
+                                            // without clearing it here, the next sign-in (same device,
                                             // any business, including a freshly created one) starts
-                                            // from whatever the previous business left behind. Awaited
-                                            // - not fire-and-forget - and `entered` only flips to null
-                                            // once the wipe finishes, so AuthNavGate can't route into a
-                                            // new sign-in/business-create flow, and SyncEngine can't
-                                            // start re-populating tables for the next business, until
-                                            // the previous business's data is actually gone.
+                                            // from whatever the previous business left behind. Only the
+                                            // already-synced cache is cleared - any row still
+                                            // pendingSync = true (recorded offline, not yet pushed) is
+                                            // left in place and syncs automatically on next login, so
+                                            // signing out mid-offline-work can't silently lose data.
+                                            // Awaited - not fire-and-forget - and `entered` only flips
+                                            // to null once the clear finishes, so AuthNavGate can't
+                                            // route into a new sign-in/business-create flow, and
+                                            // SyncEngine can't start re-populating tables for the next
+                                            // business, until the previous business's synced data is
+                                            // actually gone.
                                             lifecycleScope.launch(Dispatchers.IO) {
-                                                database.clearAllTablesSuspending()
+                                                database.clearSyncedDataSuspending()
                                                 withContext(Dispatchers.Main) {
                                                     entered = null
                                                 }

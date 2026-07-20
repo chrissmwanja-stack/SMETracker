@@ -56,6 +56,12 @@ interface SMEDao {
     @Query("UPDATE sales SET pendingSync = 0 WHERE id = :saleId")
     suspend fun clearSalePendingSync(saleId: String)
 
+    // Sign-out clear: deletes only the already-synced cache, leaves any
+    // pendingSync = 1 rows in place so they aren't lost before they can
+    // sync. See SMEDatabase.clearSyncedDataSuspending().
+    @Query("DELETE FROM sales WHERE pendingSync = 0")
+    suspend fun deleteSyncedSales()
+
     // Called by SaleSync.pushPending once a sale has successfully claimed
     // its authoritative number from businesses/{businessId}/counters/
     // receiptSequence via a Firestore transaction.
@@ -85,6 +91,9 @@ interface SMEDao {
     @Query("UPDATE customers SET pendingSync = 0 WHERE id = :customerId")
     suspend fun clearCustomerPendingSync(customerId: String)
 
+    @Query("DELETE FROM customers WHERE pendingSync = 0")
+    suspend fun deleteSyncedCustomers()
+
     // -- Debts ---------------------------------------------------------
     @Query("SELECT * FROM debts ORDER BY date DESC")
     fun getAllDebts(): Flow<List<Debt>>
@@ -111,6 +120,9 @@ interface SMEDao {
     @Query("UPDATE debts SET pendingSync = 0 WHERE id = :debtId")
     suspend fun clearDebtPendingSync(debtId: String)
 
+    @Query("DELETE FROM debts WHERE pendingSync = 0")
+    suspend fun deleteSyncedDebts()
+
     // -- Expenses --------------------------------------------------
     @Query("SELECT * FROM expenses ORDER BY date DESC")
     fun getAllExpenses(): Flow<List<Expense>>
@@ -133,6 +145,9 @@ interface SMEDao {
 
     @Query("UPDATE expenses SET pendingSync = 0 WHERE id = :expenseId")
     suspend fun clearExpensePendingSync(expenseId: String)
+
+    @Query("DELETE FROM expenses WHERE pendingSync = 0")
+    suspend fun deleteSyncedExpenses()
 
     // Called by ExpenseSync after a picked receipt photo finishes uploading
     // to Firebase Storage - records the resulting download URL and clears
@@ -165,4 +180,7 @@ interface SMEDao {
 
     @Query("UPDATE tasks SET pendingSync = 0 WHERE id = :taskId")
     suspend fun clearTaskPendingSync(taskId: String)
+
+    @Query("DELETE FROM tasks WHERE pendingSync = 0")
+    suspend fun deleteSyncedTasks()
 }
