@@ -16,7 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-// One product line from AddSaleScreen's cart — the subset of SaleLineItem
+// One product line from AddSaleScreen's cart - the subset of SaleLineItem
 // that's already been validated/resolved (amount and quantity parsed,
 // description defaulted) and is ready to become its own Sale row.
 data class SaleLineInput(
@@ -30,18 +30,18 @@ class SMEViewModel(
     private val repository: SMERepository,
     // Nullable so tests/previews that don't need sync can keep constructing
     // this ViewModel with just a repository. Every mutation below calls
-    // syncEngine?.requestPush() after its local write — deletions are the
+    // syncEngine?.requestPush() after its local write - deletions are the
     // one exception, since SyncEngine doesn't sync deletes in either
     // direction yet (a known limitation, not an oversight here).
     private val syncEngine: SyncEngine? = null,
     // Nullable for the same reason as syncEngine. Used only to stamp
     // recordedBy and the reconciliation flags at creation time (see
-    // addSale/addInventoryItem/upsertInventoryItem) — when null, new sales
+    // addSale/addInventoryItem/upsertInventoryItem) - when null, new sales
     // and inventory items are treated as owner-recorded/already-reconciled,
     // matching this ViewModel's pre-reconciliation behavior.
     private val sessionManager: SessionManager? = null,
     // Nullable for the same reason as syncEngine/sessionManager. Used only
-    // to load the business's display name for the dashboard header — when
+    // to load the business's display name for the dashboard header - when
     // null (or when there's no session/businessId yet), businessName just
     // stays blank and callers fall back to a default label.
     private val businessRepository: BusinessRepository? = null
@@ -65,7 +65,7 @@ class SMEViewModel(
     val pendingTasks: StateFlow<List<Task>> = repository.getPendingTasks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // ── Reconciliation (owner-only; screen is responsible for gating) ──
+    // -- Reconciliation (owner-only; screen is responsible for gating) --
     val unreconciledSales: StateFlow<List<Sale>> = repository.unreconciledSales
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -79,7 +79,7 @@ class SMEViewModel(
 
     // Business display name for the dashboard header. Loaded once per
     // businessId change rather than folded into the uiState combine() chain
-    // above — the business's own name essentially never changes during a
+    // above - the business's own name essentially never changes during a
     // session, so there's no need to re-fetch it on every sales/customers/etc.
     // update. Falls back to blank if there's no session, no businessId yet,
     // or the fetch fails; callers should show a default label in that case.
@@ -172,7 +172,7 @@ class SMEViewModel(
             val (myPhone, isOwner) = currentSession()
             // A worker's Add dialog never shows a cost field (see
             // InventoryItemDialog), so costPrice here is always the unset 0.0
-            // default for a worker — that's exactly the case that needs an
+            // default for a worker - that's exactly the case that needs an
             // owner's review. An owner creating the item already entered a
             // real cost, so it's reconciled immediately.
             repository.insertInventoryItem(
@@ -180,7 +180,7 @@ class SMEViewModel(
             )
         } else {
             // Editing an existing item always goes through the owner-only
-            // cost field when isOwner (see InventoryItemDialog) — if this
+            // cost field when isOwner (see InventoryItemDialog) - if this
             // save came from an owner, treat it as having reviewed the cost.
             val (_, isOwner) = currentSession()
             repository.updateInventoryItem(if (isOwner) item.copy(costReconciled = true) else item)
@@ -209,7 +209,7 @@ class SMEViewModel(
         repository.deleteInventoryItem(item)
     }
 
-    // Testing convenience — inserts a small set of sample products so a
+    // Testing convenience - inserts a small set of sample products so a
     // fresh sign-up/device has something to sell/reconcile against right
     // away instead of starting from an empty inventory. Idempotent: no-ops
     // if inventory already has anything, so it's safe if the button behind
@@ -232,13 +232,13 @@ class SMEViewModel(
 
     fun getAdjustmentsForItem(itemId: String) = repository.getAdjustmentsForItem(itemId)
 
-    // Incoming Stock — additive-only, available to workers and owners alike.
+    // Incoming Stock - additive-only, available to workers and owners alike.
     fun receiveStock(itemId: String, quantity: Int, note: String? = null) = viewModelScope.launch {
         repository.receiveStock(itemId, quantity, note)
         syncEngine?.requestPush()
     }
 
-    // Recount — owner-only correction after a physical count. The screen is
+    // Recount - owner-only correction after a physical count. The screen is
     // responsible for only exposing this to an owner and for requiring a note;
     // this function trusts its caller on both, same as the rest of this class.
     fun recountStock(itemId: String, newQuantity: Int, note: String) = viewModelScope.launch {
@@ -257,7 +257,7 @@ class SMEViewModel(
         inventoryItemId: String? = null,
         quantity: Int = 1,
         // Set when the customer was picked from the saved-customers dropdown
-        // rather than typed as a one-off name — links this sale back to that
+        // rather than typed as a one-off name - links this sale back to that
         // Customer record. Null is a legitimate, common case (ad-hoc/walk-in
         // sale with no saved customer), not an error.
         customerId: String? = null
@@ -277,7 +277,7 @@ class SMEViewModel(
         val (myPhone, isOwner) = currentSession()
         // A custom/service sale (no linked item) has no cost basis to review,
         // so it's reconciled by definition. A sale tied to a tracked item is
-        // only trustworthy if an owner's device computed the profit — a
+        // only trustworthy if an owner's device computed the profit - a
         // worker's device never has real cost data (see InventoryItemDialog),
         // so its profit here is always 0 and needs an owner's review.
         val financialsReconciled = inventoryItemId == null || isOwner
@@ -309,7 +309,7 @@ class SMEViewModel(
     // directly per line: the customer may be a walk-in the user has chosen,
     // via the "Save as new customer" toggle, to promote into a real saved
     // Customer for this sale. That promotion has to happen once, up front,
-    // and be awaited — every line item then shares the same resolved
+    // and be awaited - every line item then shares the same resolved
     // customerId, rather than each line racing to create its own duplicate
     // Customer row.
     fun addSaleLines(
@@ -347,13 +347,21 @@ class SMEViewModel(
     }
 
     // Expense Actions
-    fun addExpense(description: String, amount: Double, category: String = "General", receiptNumber: String? = null) = viewModelScope.launch {
+    fun addExpense(
+        description: String,
+        amount: Double,
+        category: String = "General",
+        receiptNumber: String? = null,
+        localReceiptPath: String? = null
+    ) = viewModelScope.launch {
         repository.addExpense(
             Expense(
                 description = description,
                 amount = amount,
                 category = category,
-                receiptNumber = receiptNumber
+                receiptNumber = receiptNumber,
+                localReceiptPath = localReceiptPath,
+                receiptPendingUpload = localReceiptPath != null
             )
         )
         syncEngine?.requestPush()
@@ -389,7 +397,7 @@ class SMEViewModel(
     // costPricePerUnit is what the owner enters (matches how InventoryItem.
     // costPrice is entered everywhere else). Sale.costPriceSnapshot is
     // documented as the TOTAL cost basis (costPrice * quantity), and
-    // Sale.amount is the total the customer paid for the whole line — so
+    // Sale.amount is the total the customer paid for the whole line - so
     // profit is amount minus total cost, not a per-unit difference.
     fun reconcileSale(saleId: String, costPricePerUnit: Double) = viewModelScope.launch {
         val sale = unreconciledSales.value.find { it.id == saleId } ?: return@launch

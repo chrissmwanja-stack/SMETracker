@@ -10,7 +10,7 @@ import com.vestateck.smetracker.utils.IdGenerator
 data class InventoryItem(
     @PrimaryKey val id: String = IdGenerator.newId(),
     val name: String,
-    val category: String = "",
+    @ColumnInfo(defaultValue = "''") val category: String = "",
     val quantity: Int = 0,
     val reorderLevel: Int = 5,        // alert threshold
     val costPrice: Double = 0.0,

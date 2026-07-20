@@ -1,6 +1,12 @@
 // screens/ExpensesScreen.kt
 package com.vestateck.smetracker.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +21,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -23,7 +31,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
 import com.vestateck.smetracker.data.entities.Expense
 import com.vestateck.smetracker.utils.CurrencyUtils
+import com.vestateck.smetracker.utils.ImageUtils
 import com.vestateck.smetracker.viewmodel.SMEViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -98,7 +110,13 @@ fun ExpensesScreen(viewModel: SMEViewModel, navController: NavController) {
                     contentPadding = PaddingValues(bottom = 96.dp)
                 ) {
                     items(expenses, key = { it.id }) { expense ->
-                        ExpenseListItem(expense = expense, onDelete = { viewModel.deleteExpense(expense) })
+                        ExpenseListItem(
+                            expense = expense,
+                            onDelete = {
+                                ImageUtils.deleteLocalCopy(expense.localReceiptPath)
+                                viewModel.deleteExpense(expense)
+                            }
+                        )
                     }
                 }
             }
@@ -108,8 +126,8 @@ fun ExpensesScreen(viewModel: SMEViewModel, navController: NavController) {
     if (showDialog) {
         AddExpenseDialog(
             onDismiss = { showDialog = false },
-            onConfirm = { description, amount, category, receiptNumber ->
-                viewModel.addExpense(description, amount, category, receiptNumber)
+            onConfirm = { description, amount, category, receiptNumber, localReceiptPath ->
+                viewModel.addExpense(description, amount, category, receiptNumber, localReceiptPath)
                 showDialog = false
             }
         )
@@ -126,6 +144,14 @@ private fun ExpenseListItem(expense: Expense, onDelete: () -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (expense.localReceiptPath != null || !expense.receiptUrl.isNullOrBlank()) {
+                InventoryThumbnail(
+                    localImagePath = expense.localReceiptPath,
+                    imageUrl = expense.receiptUrl,
+                    size = 44.dp
+                )
+                Spacer(Modifier.width(12.dp))
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(expense.description, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 Spacer(Modifier.height(2.dp))
@@ -167,7 +193,7 @@ private fun ExpenseListItem(expense: Expense, onDelete: () -> Unit) {
 @Composable
 private fun AddExpenseDialog(
     onDismiss: () -> Unit,
-    onConfirm: (description: String, amount: Double, category: String, receiptNumber: String?) -> Unit
+    onConfirm: (description: String, amount: Double, category: String, receiptNumber: String?, localReceiptPath: String?) -> Unit
 ) {
     var description by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
@@ -178,10 +204,71 @@ private fun AddExpenseDialog(
     var descError by remember { mutableStateOf(false) }
     var amountError by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var localReceiptPath by remember { mutableStateOf<String?>(null) }
+    var isProcessingPhoto by remember { mutableStateOf(false) }
+
+    val pickPhoto = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        isProcessingPhoto = true
+        coroutineScope.launch {
+            val newPath = withContext(Dispatchers.IO) { ImageUtils.copyToInternalStorage(context, uri) }
+            if (newPath != null) {
+                ImageUtils.deleteLocalCopy(localReceiptPath)
+                localReceiptPath = newPath
+            }
+            isProcessingPhoto = false
+        }
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Add Expense", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+
+                // Receipt photo - proof of the expense for tax/audit purposes.
+                // Same picker pattern as InventoryItemDialog's item photo.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clickable {
+                                pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            }
+                    ) {
+                        InventoryThumbnail(localImagePath = localReceiptPath, imageUrl = null, size = 64.dp)
+                        if (isProcessingPhoto) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.4f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = androidx.compose.ui.graphics.Color.White, strokeWidth = 2.dp)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        TextButton(onClick = {
+                            pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }) {
+                            Text(if (localReceiptPath == null) "Attach receipt photo" else "Change photo", fontSize = 13.sp)
+                        }
+                        if (localReceiptPath != null) {
+                            TextButton(onClick = {
+                                ImageUtils.deleteLocalCopy(localReceiptPath)
+                                localReceiptPath = null
+                            }) {
+                                Text("Remove photo", fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
 
                 OutlinedTextField(
                     value = description,
@@ -230,19 +317,23 @@ private fun AddExpenseDialog(
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onDismiss) { Text("Cancel") }
-                    Button(onClick = {
-                        descError = description.isBlank()
-                        amountError = amount.toDoubleOrNull() == null || (amount.toDoubleOrNull() ?: 0.0) <= 0
+                    Button(
+                        enabled = !isProcessingPhoto,
+                        onClick = {
+                            descError = description.isBlank()
+                            amountError = amount.toDoubleOrNull() == null || (amount.toDoubleOrNull() ?: 0.0) <= 0
 
-                        if (!descError && !amountError) {
-                            onConfirm(
-                                description.trim(),
-                                amount.toDouble(),
-                                category,
-                                receiptNumber.trim().ifBlank { null }
-                            )
+                            if (!descError && !amountError) {
+                                onConfirm(
+                                    description.trim(),
+                                    amount.toDouble(),
+                                    category,
+                                    receiptNumber.trim().ifBlank { null },
+                                    localReceiptPath
+                                )
+                            }
                         }
-                    }) { Text("Save") }
+                    ) { Text("Save") }
                 }
             }
         }

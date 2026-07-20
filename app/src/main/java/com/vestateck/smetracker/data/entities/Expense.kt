@@ -10,7 +10,7 @@ data class Expense(
     val id: String = IdGenerator.newId(),
     val description: String,
     val amount: Double,
-    val category: String = "General",
+    @androidx.room.ColumnInfo(defaultValue = "'General'") val category: String = "General",
     val date: Long = System.currentTimeMillis(),
     val receiptNumber: String? = null,
     // Phone number (E.164) of whoever recorded this expense. Blank until the

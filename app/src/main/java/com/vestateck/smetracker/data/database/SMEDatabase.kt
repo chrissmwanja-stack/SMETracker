@@ -22,7 +22,7 @@ import com.vestateck.smetracker.data.entities.Task
 
 @Database(
     entities = [Sale::class, Customer::class, Debt::class, InventoryItem::class, Expense::class, Task::class, StockAdjustment::class],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -131,6 +131,20 @@ abstract class SMEDatabase : RoomDatabase() {
             }
         }
 
+        // v12 -> v13: no actual column change. InventoryItem.category and
+        // Expense.category picked up explicit @ColumnInfo(defaultValue=...)
+        // annotations matching their existing Kotlin defaults ("" and
+        // "General"). Room folds defaultValue into its computed schema hash,
+        // so even though SQLite needs no ALTER here, the version still has
+        // to move or Room's schema validation fails on next launch against
+        // any device already running v12 - fallbackToDestructiveMigration
+        // would otherwise silently wipe local data rather than crash.
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Intentionally empty - see comment above.
+            }
+        }
+
         fun getDatabase(context: Context): SMEDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -138,7 +152,7 @@ abstract class SMEDatabase : RoomDatabase() {
                     SMEDatabase::class.java,
                     "sme_tracker_database"
                 )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     // Safety net for older installs with no migration path defined (v1-v4).
                     // Any new schema change from here on should get its own Migration above
                     // instead of relying on this, or existing user data will be wiped on upgrade.
