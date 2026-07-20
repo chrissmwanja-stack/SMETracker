@@ -82,9 +82,9 @@ Room database, currently at schema version 14. Most version bumps pre-launch use
 
 ### Testing
 
-Unit tests cover the pure, Android/Firebase-free logic — `DashboardAnalytics`, `TimeUtils`, `CurrencyUtils`, `MemberRole` parsing — plus `SMEViewModel`'s reconciliation math (`reconcileSale`/`reconcileInventoryCost`) in `SMEViewModelReconciliationTest.kt`, using hand-rolled `FakeSMEDao`/`FakeInventoryDao` fixtures (no mocking library in the project). Test fixtures for `Sale`, `Debt`, `Expense`, `InventoryItem`, and `Customer` must pass an explicit `id` string, since their default (`IdGenerator.newId()`) calls `FirebaseFirestore.getInstance()`, which crashes in a plain JVM test.
+Unit tests cover the pure, Android/Firebase-free logic — `DashboardAnalytics`, `TimeUtils`, `CurrencyUtils`, `MemberRole` parsing, the checkout-grouping logic behind receipt numbering (`CheckoutGrouping.kt`, tested in `CheckoutGroupingTest.kt`) — plus `SMEViewModel`'s reconciliation math (`reconcileSale`/`reconcileInventoryCost`) in `SMEViewModelReconciliationTest.kt`, using hand-rolled `FakeSMEDao`/`FakeInventoryDao` fixtures (no mocking library in the project). Test fixtures for `Sale`, `Debt`, `Expense`, `InventoryItem`, and `Customer` must pass an explicit `id` string, since their default (`IdGenerator.newId()`) calls `FirebaseFirestore.getInstance()`, which crashes in a plain JVM test.
 
-Not yet covered: `SyncEngine` itself (would need a fake/mocked `Firestore` instance).
+Not yet covered: the rest of `SyncEngine` and its per-entity sync classes (would need a fake/mocked `Firestore` instance) — `CheckoutGrouping.kt` was deliberately split out of `SaleSync.pushPending` so its logic could be tested without one.
 
 ## Known follow-ups
 

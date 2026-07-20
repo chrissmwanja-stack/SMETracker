@@ -137,21 +137,13 @@ class SaleSync(
     suspend fun pushPending(businessId: String, myPhone: String, role: MemberRole) {
         val businessRef = firestore.collection("businesses").document(businessId)
         val pending = smeDao.getPendingSyncSales()
-        // Sale rows created together in one checkout (SMEViewModel.addSaleLines)
-        // share one provisionalReceiptNumber, assigned once for the whole
-        // checkout rather than once per product - see that function's doc
-        // comment. Grouping on it here reconstructs the checkout so the
-        // whole group claims ONE authoritative number, not one per line
-        // item. A single-item addSale call is just a checkout of size one,
-        // so it falls out of this same grouping with no special-casing.
-        // ifBlank falls back to the sale's own id: a blank provisionalReceiptNumber
-        // shouldn't happen in production (MainActivity always wires a real
-        // ReceiptNumberGenerator), but if it ever did, grouping unrelated
-        // sales together under one shared "" key would wrongly merge them
-        // into a single receipt number - falling back to a unique id keeps
-        // each such sale its own one-item group instead.
-        val checkouts = pending.groupBy { sale -> sale.provisionalReceiptNumber.ifBlank { sale.id } }
-        for ((_, checkout) in checkouts) {
+        // See CheckoutGrouping.kt (this package) for the grouping logic
+        // itself, split out into its own file so it's unit-testable without
+        // a Firestore instance. A single-item addSale call is just a
+        // checkout of size one, so it falls out of this same grouping with
+        // no special-casing.
+        val checkouts = groupSalesIntoCheckouts(pending)
+        for (checkout in checkouts) {
             try {
                 // Claim the authoritative receipt number before writing any
                 // sale doc in this group, so those writes already carry it -
@@ -162,7 +154,7 @@ class SaleSync(
                 // claimed a number but failed partway through writing this
                 // group), that number is reused rather than burning a new
                 // one for the same checkout.
-                var finalReceiptNumber = checkout.firstNotNullOfOrNull { it.finalReceiptNumber }
+                var finalReceiptNumber = alreadyClaimedReceiptNumber(checkout)
                 if (finalReceiptNumber == null) {
                     val counterRef = businessRef.collection("counters").document("receiptSequence")
                     val claimedNumber = firestore.runTransaction { txn ->
