@@ -28,6 +28,14 @@ interface InventoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(item: InventoryItem)
 
+    // Bulk counterpart to insert(), for CSV import (see
+    // SMEViewModel.addInventoryItemsBulk / BulkAddInventoryScreen). Room's
+    // generated code for a list @Insert already runs every row through a
+    // single transaction, so a batch either lands completely or not at all.
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<InventoryItem>)
+
+
     @Update
     suspend fun update(item: InventoryItem)
 

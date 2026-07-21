@@ -11,6 +11,7 @@ import com.vestateck.smetracker.data.remote.auth.SessionManager
 import com.vestateck.smetracker.data.remote.model.Business
 import com.vestateck.smetracker.data.remote.sync.SyncEngine
 import com.vestateck.smetracker.repository.SMERepository
+import com.vestateck.smetracker.utils.BulkInventoryRow
 import com.vestateck.smetracker.utils.IdGenerator
 import com.vestateck.smetracker.utils.TimeUtils
 import kotlinx.coroutines.Dispatchers
@@ -228,6 +229,37 @@ class SMEViewModel(
                 imagePendingUpload = imagePendingUpload
             )
         )
+        syncEngine?.requestPush()
+    }
+
+    // Bulk counterpart to addInventoryItem, for CSV import (see
+    // BulkAddInventoryScreen / InventoryCsvImporter). One currentSession()
+    // call covers the whole batch, then a single insertAll + single
+    // requestPush - but each row still gets the exact same owner/cost
+    // gating addInventoryItem applies per item, so a bulk-imported item
+    // behaves identically to one added by hand:
+    //   - a worker's costPrice is never trusted, CSV cell or not (matches
+    //     AddInventoryScreen/InventoryItemDialog never showing that field
+    //     to a worker in the first place)
+    //   - an owner's row with no costPrice cell falls into the same
+    //     Reconciliation queue a worker-created item would.
+    fun addInventoryItemsBulk(rows: List<BulkInventoryRow>) = viewModelScope.launch {
+        val (myPhone, isOwner) = currentSession()
+        val items = rows.map { row ->
+            val cost = if (isOwner) (row.costPrice ?: 0.0) else 0.0
+            val reconciled = isOwner && row.costPrice != null
+            InventoryItem(
+                name = row.name,
+                category = row.category,
+                quantity = row.quantity,
+                sellingPrice = row.sellingPrice,
+                costPrice = cost,
+                reorderLevel = row.reorderLevel,
+                recordedBy = myPhone,
+                costReconciled = reconciled
+            )
+        }
+        repository.insertInventoryItems(items)
         syncEngine?.requestPush()
     }
 

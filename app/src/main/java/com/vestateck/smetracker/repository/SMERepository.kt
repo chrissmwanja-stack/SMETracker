@@ -61,6 +61,7 @@ class SMERepository(
     fun getTotalItemCount(): Flow<Long> = inventoryDao.getTotalItemCount()
 
     suspend fun insertInventoryItem(item: InventoryItem) = inventoryDao.insert(item)
+    suspend fun insertInventoryItems(items: List<InventoryItem>) = inventoryDao.insertAll(items)
     suspend fun updateInventoryItem(item: InventoryItem) = inventoryDao.update(item)
     suspend fun deleteInventoryItem(item: InventoryItem) = inventoryDao.delete(item)
     suspend fun adjustStock(itemId: String, amount: Int) = inventoryDao.adjustStock(itemId, amount, System.currentTimeMillis())
