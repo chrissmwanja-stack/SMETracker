@@ -139,7 +139,7 @@ data class DashboardAnalytics(
             val productMap = mutableMapOf<String, ProductAccumulator>()
             sales.forEach { sale ->
                 val acc = productMap.getOrPut(sale.description) { ProductAccumulator() }
-                acc.unitsSold += 1
+                acc.unitsSold += sale.quantity
                 acc.revenue += sale.amount
             }
             val topSellingProducts = productMap.entries
