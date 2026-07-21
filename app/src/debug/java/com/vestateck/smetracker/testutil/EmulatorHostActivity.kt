@@ -8,7 +8,8 @@ import android.os.Bundle
  * to attach to in instrumented tests. No UI, no logic — see
  * FirebaseEmulatorRule.signInWithPhoneNumber().
  *
- * Lives in androidTest, not main, so it never ships in a release build.
+ * Lives in debug, not main, so it never ships in a release build,
+ * but stays in the app process during instrumented tests.
  */
 class EmulatorHostActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {

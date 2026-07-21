@@ -2,16 +2,14 @@ rules_version = '2';
 
 // SMETracker - Firebase Storage Rules
 //
-// INTERIM (Spark plan): proper business/role scoping requires firestore.get()
-// cross-service calls, which are Blaze-only. Until upgraded, this only checks
-// that the requester is signed in via phone auth - NOT that they belong to
-// the specific business whose path they are reading/writing. Security for
-// business scoping currently relies on the app only ever requesting paths
-// for the signed-in user's own business.
+// Business-scoped via cross-service firestore.get() on phoneIndex, mirroring
+// firestore.rules' isMemberOf/isOwnerOf pattern (Blaze-only capability -
+// previously stubbed to signed-in-only while on Spark; see git history).
 //
-// TODO once on Blaze: replace with businessId-scoped rules using
-// firestore.get(/databases/(default)/documents/phoneIndex/$(myPhone())).data
-// to check membership, mirroring firestore.rules.
+// Path segments below are dictated by the actual upload call sites, not the
+// other way around - keep these in sync with:
+//   - InventorySync.pushPending: businesses/{businessId}/inventory/{itemId}.jpg
+//   - ExpenseSync.pushPending:   businesses/{businessId}/expense_receipts/{expenseId}.jpg
 
 service firebase.storage {
   match /b/{bucket}/o {
@@ -20,20 +18,53 @@ service firebase.storage {
       return request.auth != null && request.auth.token.phone_number != null;
     }
 
-    match /businesses/{businessId}/inventory_images/{imageId} {
-      allow read, write: if isSignedIn()
-                          && request.resource.size < 5 * 1024 * 1024
-                          && request.resource.contentType.matches('image/.*');
-
-      allow delete: if isSignedIn();
+    function myPhone() {
+      return request.auth.token.phone_number;
     }
 
-    match /businesses/{businessId}/expense_receipts/{receiptId} {
-      allow read, write: if isSignedIn()
-                          && request.resource.size < 5 * 1024 * 1024
-                          && request.resource.contentType.matches('image/.*');
+    // Firestore's default database - matches firestore.rules' $(database)
+    // being called with the (default) database in this project.
+    function phoneIndexData() {
+      return firestore.get(/databases/(default)/documents/phoneIndex/$(myPhone())).data;
+    }
 
-      allow delete: if isSignedIn();
+    function isMemberOf(businessId) {
+      return isSignedIn()
+        && firestore.exists(/databases/(default)/documents/phoneIndex/$(myPhone()))
+        && phoneIndexData().businessId == businessId;
+    }
+
+    function isOwnerOf(businessId) {
+      return isMemberOf(businessId) && phoneIndexData().role == 'OWNER';
+    }
+
+    function isValidImage() {
+      return request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Path matches InventorySync.pushPending exactly: {item.id}.jpg, not a
+    // generic {imageId} - kept as a named capture for readability, but any
+    // itemId under a business the requester belongs to is fair game since
+    // isMemberOf(businessId) already scopes it.
+    match /businesses/{businessId}/inventory/{itemId} {
+      allow read: if isMemberOf(businessId);
+      allow write: if isMemberOf(businessId) && isValidImage();
+      allow delete: if isMemberOf(businessId);
+    }
+
+    // Expenses are read-restricted in Firestore (workers see only their own),
+    // but Storage rules can't see the doc's recordedBy field cheaply without
+    // an extra firestore.get() per read - mirroring that exactly would need
+    // the receipt's owning expense doc looked up here too. Scoping to
+    // business membership (not per-expense owner) is the practical tradeoff:
+    // any member of the business can read any receipt image in it, same as
+    // inventory photos. Tighten further only if receipt confidentiality
+    // between workers becomes a real requirement.
+    match /businesses/{businessId}/expense_receipts/{expenseId} {
+      allow read: if isMemberOf(businessId);
+      allow write: if isMemberOf(businessId) && isValidImage();
+      allow delete: if isOwnerOf(businessId);
     }
   }
 }

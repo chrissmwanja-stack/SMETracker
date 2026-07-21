@@ -10,8 +10,11 @@ import com.google.firebase.auth.PhoneAuthOptions
 import com.google.firebase.auth.PhoneAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.junit.rules.TestWatcher
 import org.junit.runner.Description
@@ -22,7 +25,6 @@ import java.net.URL
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 
 /**
  * Points [FirebaseAuth] and [FirebaseFirestore] at the Local Emulator Suite
@@ -101,12 +103,12 @@ class FirebaseEmulatorRule(
         activity: Activity,
         timeoutSeconds: Long = 30L
     ): FirebaseUser {
-        val credential = suspendCoroutine<PhoneAuthCredential> { cont ->
+        val credential = suspendCancellableCoroutine<PhoneAuthCredential> { cont ->
             val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
                 override fun onVerificationCompleted(credential: PhoneAuthCredential) {
                     // Auto-verification path (rare against the emulator, but
                     // handle it so the rule works if Google ever changes this).
-                    cont.resume(credential)
+                    cont.resume(credential, null)
                 }
 
                 override fun onVerificationFailed(e: com.google.firebase.FirebaseException) {
@@ -119,7 +121,7 @@ class FirebaseEmulatorRule(
                 ) {
                     try {
                         val code = fetchVerificationCode(phoneNumber)
-                        cont.resume(PhoneAuthProvider.getCredential(verificationId, code))
+                        cont.resume(PhoneAuthProvider.getCredential(verificationId, code), null)
                     } catch (e: Exception) {
                         cont.resumeWithException(e)
                     }
@@ -174,9 +176,14 @@ class FirebaseEmulatorRule(
         val connection = URL(urlString).openConnection() as HttpURLConnection
         return try {
             connection.requestMethod = method
-            connection.connectTimeout = 5_000
-            connection.readTimeout = 5_000
-            val stream = if (connection.responseCode in 200..299) {
+            connection.connectTimeout = 2_000 // Reduced from 5s to 2s
+            connection.readTimeout = 2_000    // Reduced from 5s to 2s
+            val responseCode = try {
+                connection.responseCode
+            } catch (e: Exception) {
+                throw IllegalStateException("Failed to connect to emulator at $urlString. Is the Firebase Emulator Suite running? Error: ${e.message}", e)
+            }
+            val stream = if (responseCode in 200..299) {
                 connection.inputStream
             } else {
                 connection.errorStream
