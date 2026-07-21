@@ -1,6 +1,12 @@
 // screens/AddInventoryScreen.kt
 package com.vestateck.smetracker.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -11,12 +17,20 @@ import androidx.compose.material.icons.filled.Numbers
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.vestateck.smetracker.utils.ImageUtils
 import com.vestateck.smetracker.viewmodel.SMEViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,6 +42,31 @@ fun AddInventoryScreen(viewModel: SMEViewModel, navController: NavController, is
     var category by remember { mutableStateOf("") }
     var minStockLevel by remember { mutableStateOf("5") }
     var showError by remember { mutableStateOf(false) }
+
+    // Photo handling - identical flow to InventoryItemDialog's (see that
+    // file's doc comment): pick -> resize/copy into this device's internal
+    // storage -> mark imagePendingUpload so InventorySync.pushPending picks
+    // it up on the next sync. No imageUrl/existing-item state needed here
+    // since this screen only ever creates brand-new items.
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var localImagePath by remember { mutableStateOf<String?>(null) }
+    var isProcessingPhoto by remember { mutableStateOf(false) }
+
+    val pickPhoto = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        isProcessingPhoto = true
+        coroutineScope.launch {
+            val newPath = withContext(Dispatchers.IO) { ImageUtils.copyToInternalStorage(context, uri) }
+            if (newPath != null) {
+                ImageUtils.deleteLocalCopy(localImagePath)
+                localImagePath = newPath
+            }
+            isProcessingPhoto = false
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -52,6 +91,47 @@ fun AddInventoryScreen(viewModel: SMEViewModel, navController: NavController, is
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Photo - same picker/thumbnail as InventoryItemDialog uses,
+            // reusing that composable directly (same package, no import
+            // needed) so the two add-item paths look and behave the same.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clickable {
+                            pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }
+                ) {
+                    InventoryThumbnail(localImagePath = localImagePath, imageUrl = null, size = 64.dp)
+                    if (isProcessingPhoto) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.4f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = androidx.compose.ui.graphics.Color.White, strokeWidth = 2.dp)
+                        }
+                    }
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    TextButton(onClick = {
+                        pickPhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }) {
+                        Text(if (localImagePath == null) "Add photo" else "Change photo", fontSize = 13.sp)
+                    }
+                    if (localImagePath != null) {
+                        TextButton(onClick = {
+                            ImageUtils.deleteLocalCopy(localImagePath)
+                            localImagePath = null
+                        }) {
+                            Text("Remove photo", fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+
             // Product Name
             OutlinedTextField(
                 value = name,
@@ -202,7 +282,9 @@ fun AddInventoryScreen(viewModel: SMEViewModel, navController: NavController, is
                             costPrice = cost,       // ← passed through to ViewModel
                             sellingPrice = sell,
                             category = category,
-                            reorderLevel = minStock
+                            reorderLevel = minStock,
+                            localImagePath = localImagePath,
+                            imagePendingUpload = localImagePath != null
                         )
                         navController.popBackStack()
                     }

@@ -199,7 +199,20 @@ class SMEViewModel(
         syncEngine?.requestPush()
     }
 
-    fun addInventoryItem(name: String, quantity: Int, sellingPrice: Double, category: String = "", costPrice: Double = 0.0, reorderLevel: Int = 5) = viewModelScope.launch {
+    fun addInventoryItem(
+        name: String,
+        quantity: Int,
+        sellingPrice: Double,
+        category: String = "",
+        costPrice: Double = 0.0,
+        reorderLevel: Int = 5,
+        // Mirrors InventoryItemDialog's photo handling (see that file's doc
+        // comment on InventoryItem.localImagePath) - this quick-add screen
+        // now offers the same picker, so a photo taken here needs the same
+        // two fields to make it into InventorySync.pushPending's upload step.
+        localImagePath: String? = null,
+        imagePendingUpload: Boolean = false
+    ) = viewModelScope.launch {
         val (myPhone, isOwner) = currentSession()
         repository.insertInventoryItem(
             InventoryItem(
@@ -210,7 +223,9 @@ class SMEViewModel(
                 costPrice = costPrice,
                 reorderLevel = reorderLevel,
                 recordedBy = myPhone,
-                costReconciled = isOwner
+                costReconciled = isOwner,
+                localImagePath = localImagePath,
+                imagePendingUpload = imagePendingUpload
             )
         )
         syncEngine?.requestPush()
