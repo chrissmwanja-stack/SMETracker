@@ -25,9 +25,25 @@ interface SMEDao {
     // Sync pull, financials half only: costPriceSnapshot/profit come from a
     // SEPARATE Firestore listener (saleFinancials) than the core sale fields
     // (sales), which can arrive in either order. This patches just those two
-    // columns so it never clobbers whatever the sales listener already wrote
-    // (or will write) for the rest of the row.
-    @Query("UPDATE sales SET costPriceSnapshot = :costPriceSnapshot, profit = :profit WHERE id = :saleId")
+    // columns (plus financialsReconciled - see below) so it never clobbers
+    // whatever the sales listener already wrote (or will write) for the
+    // rest of the row.
+    //
+    // financialsReconciled = 1 here is required, not cosmetic: a
+    // saleFinancials document only ever exists in Firestore because an
+    // owner already reconciled it (see SaleSync class doc - it's
+    // owner-write-only and only ever written from reconcileSaleFinancials).
+    // Without setting the flag here, a device that pulls this sale fresh
+    // (e.g. after logout/login, or a first pull on another device) derives
+    // financialsReconciled independently from its own local copy of the
+    // linked inventory item's cost (see SaleSync.attachSaleListener) and
+    // can land on false even though the real financials already arrived -
+    // which put the sale right back in the Reconciliation queue for an
+    // owner to redo work that was already done.
+    @Query(
+        "UPDATE sales SET costPriceSnapshot = :costPriceSnapshot, profit = :profit, " +
+                "financialsReconciled = 1 WHERE id = :saleId"
+    )
     suspend fun updateSaleFinancials(saleId: String, costPriceSnapshot: Double, profit: Double)
 
     @Delete
