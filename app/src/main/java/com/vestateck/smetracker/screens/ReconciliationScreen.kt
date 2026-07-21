@@ -19,6 +19,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
 import com.vestateck.smetracker.data.entities.InventoryItem
 import com.vestateck.smetracker.data.entities.Sale
+import com.vestateck.smetracker.ui.components.SaleCostReviewDialog
 import com.vestateck.smetracker.utils.CurrencyUtils
 import com.vestateck.smetracker.viewmodel.SMEViewModel
 
@@ -158,77 +159,19 @@ private fun SaleReconciliationDialog(
     // saves retyping. Only a genuine positive cost counts as a suggestion;
     // 0.0 means the item's own cost is itself unreconciled, so there's
     // nothing useful to prefill.
-    var costPriceInput by remember {
-        mutableStateOf(linkedItem?.costPrice?.takeIf { it > 0.0 }?.toString() ?: "")
-    }
-    val costPricePerUnit = costPriceInput.toDoubleOrNull()
-    val projectedProfit = costPricePerUnit?.let { sale.amount - (it * sale.quantity) }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Review Sale", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                Text(sale.customerName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text(sale.description, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
-
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Sale price: ${CurrencyUtils.formatUgx(sale.amount)}", fontSize = 14.sp)
-                    Text("Qty: ${sale.quantity}", fontSize = 14.sp)
-                }
-
-                OutlinedTextField(
-                    value = costPriceInput,
-                    onValueChange = { costPriceInput = it },
-                    label = { Text("Cost Price per Unit") },
-                    supportingText = {
-                        if (linkedItem != null && linkedItem.costPrice > 0.0) {
-                            Text("Suggested from ${linkedItem.name}: ${CurrencyUtils.formatUgx(linkedItem.costPrice)}")
-                        } else if (linkedItem != null) {
-                            Text("${linkedItem.name}'s own cost price hasn't been set yet")
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
-                )
-
-                // Live projection so the owner can sanity-check the number
-                // before committing — updates on every keystroke.
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Projected profit", fontSize = 14.sp)
-                        Text(
-                            text = projectedProfit?.let { CurrencyUtils.formatUgx(it) } ?: "—",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = when {
-                                projectedProfit == null -> MaterialTheme.colorScheme.onSurfaceVariant
-                                projectedProfit < 0 -> MaterialTheme.colorScheme.error
-                                else -> MaterialTheme.colorScheme.primary
-                            }
-                        )
-                    }
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
-                    Button(
-                        onClick = { costPricePerUnit?.let { onConfirm(it) } },
-                        enabled = costPricePerUnit != null
-                    ) { Text("Confirm") }
-                }
-            }
-        }
-    }
+    val suggestedCost = linkedItem?.costPrice?.takeIf { it > 0.0 }
+    SaleCostReviewDialog(
+        title = "Review Sale",
+        sale = sale,
+        initialCostPricePerUnit = suggestedCost,
+        supportingText = when {
+            suggestedCost != null -> "Suggested from ${linkedItem.name}: ${CurrencyUtils.formatUgx(suggestedCost)}"
+            linkedItem != null -> "${linkedItem.name}'s own cost price hasn't been set yet"
+            else -> null
+        },
+        onDismiss = onDismiss,
+        onConfirm = onConfirm
+    )
 }
 
 @Composable

@@ -15,9 +15,19 @@ import com.google.firebase.firestore.FirebaseFirestore
  * collection is never actually written to; we only use its ID generator.
  */
 object IdGenerator {
+    private var testId: String? = null
+
+    /** For unit tests only: forces newId() to return a specific string. */
+    fun setTestId(id: String?) {
+        testId = id
+    }
+
     private val idGenCollection by lazy {
         FirebaseFirestore.getInstance().collection("_id_gen")
     }
 
-    fun newId(): String = idGenCollection.document().id
+    fun newId(): String {
+        testId?.let { return it }
+        return idGenCollection.document().id
+    }
 }

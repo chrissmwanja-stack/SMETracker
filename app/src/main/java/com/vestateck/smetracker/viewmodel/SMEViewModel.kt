@@ -324,14 +324,28 @@ class SMEViewModel(
         if (inventoryItemId != null && (soldItem == null || quantity > soldItem.quantity)) {
             return null
         }
+        // Auto-apply the item's own cost price whenever it's already known
+        // (costReconciled && costPrice > 0) - that's the single source of
+        // truth for what this item costs (set once via the Inventory
+        // screen or the Reconciliation screen), so a sale against it
+        // shouldn't need a second, separate manual confirmation just to
+        // repeat the same number back. A genuine 0.0 doesn't count as
+        // "known" (mirrors SaleReconciliationDialog's own suggestion logic)
+        // since that's indistinguishable from the item's cost never having
+        // been set.
+        val itemCostKnown = soldItem != null && soldItem.costReconciled && soldItem.costPrice > 0.0
         val profit = soldItem?.let { (it.sellingPrice - it.costPrice) * quantity } ?: 0.0
-        val (myPhone, isOwner) = currentSession()
+        val costPriceSnapshot = soldItem?.let { it.costPrice * quantity } ?: 0.0
+        val (myPhone, _) = currentSession()
         // A custom/service sale (no linked item) has no cost basis to review,
         // so it's reconciled by definition. A sale tied to a tracked item is
-        // only trustworthy if an owner's device computed the profit - a
-        // worker's device never has real cost data (see InventoryItemDialog),
-        // so its profit here is always 0 and needs an owner's review.
-        val financialsReconciled = inventoryItemId == null || isOwner
+        // only trustworthy once that item's OWN cost price is known -
+        // regardless of whether an owner's or a worker's device recorded the
+        // sale (an owner can sell an item whose cost was never set, same as
+        // a worker can) - so it still needs manual review via reconcileSale
+        // until the item's cost is actually set. Once it is, every sale
+        // created afterward just inherits it automatically from here.
+        val financialsReconciled = inventoryItemId == null || itemCostKnown
         val resolvedProvisionalReceiptNumber = provisionalReceiptNumber
             ?: receiptNumberGenerator?.next(myPhone) ?: ""
 
@@ -345,6 +359,7 @@ class SMEViewModel(
             description = description,
             amount = amount,
             profit = profit,
+            costPriceSnapshot = costPriceSnapshot,
             inventoryItemId = inventoryItemId,
             quantity = quantity,
             paymentMethod = paymentMethod,
@@ -486,6 +501,24 @@ class SMEViewModel(
 
     fun reconcileInventoryCost(itemId: String, costPrice: Double) = viewModelScope.launch {
         repository.reconcileItemCost(itemId, costPrice)
+        syncEngine?.requestPush()
+    }
+
+    // Owner-only correction for a sale that's ALREADY reconciled (auto or
+    // manual) but turned out to need a different cost - e.g. this
+    // particular unit was actually bought at a one-off price different from
+    // the item's normal cost. Deliberately looks the sale up in `sales`
+    // (every sale), not `unreconciledSales` - reconcileSale above is scoped
+    // to the queue on purpose (see its test coverage), so this is a
+    // separate, explicit "I want to revise this" action rather than a
+    // relaxation of that one. Reuses the same repository write as
+    // reconcileSale since the end state is identical: a reconciled sale
+    // with a specific costPriceSnapshot/profit, pendingSync so it re-pushes.
+    fun editSaleCost(saleId: String, costPricePerUnit: Double) = viewModelScope.launch {
+        val sale = sales.value.find { it.id == saleId } ?: return@launch
+        val totalCost = costPricePerUnit * sale.quantity
+        val profit = sale.amount - totalCost
+        repository.reconcileSaleFinancials(saleId, totalCost, profit)
         syncEngine?.requestPush()
     }
 }

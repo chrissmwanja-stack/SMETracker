@@ -1,5 +1,6 @@
 package com.vestateck.smetracker.data.remote.sync.entities
 
+import com.vestateck.smetracker.data.dao.InventoryDao
 import com.vestateck.smetracker.data.dao.SMEDao
 import com.vestateck.smetracker.data.entities.PaymentMethod
 import com.vestateck.smetracker.data.entities.Sale
@@ -44,6 +45,15 @@ import kotlinx.coroutines.tasks.await
  */
 class SaleSync(
     private val smeDao: SMEDao,
+    // Read-only here: lets a freshly-pulled sale (existing == null below)
+    // derive financialsReconciled from the linked item's OWN already-known
+    // cost, the same way SMEViewModel.insertSale does at creation time.
+    // Needed because saleFinancials is owner-write-only (see class doc) -
+    // a worker's device can locally auto-reconcile a sale it just created,
+    // but can never push that reconciliation to Firestore, so any OTHER
+    // device (including the owner's) has to be able to arrive at the same
+    // answer independently from its own local copy of the inventory item.
+    private val inventoryDao: InventoryDao,
     private val firestore: FirebaseFirestore,
     private val externalScope: CoroutineScope
 ) {
@@ -60,15 +70,27 @@ class SaleSync(
                             // the saleFinancials listener already merged in (or hasn't yet).
                             val existing = smeDao.getSaleById(remote.id)
                             // existing == null means this sale is new to this device, i.e.
-                            // it came from somewhere else (another team member). If that's
-                            // true and it's tied to a tracked inventory item, its financials
-                            // are unreviewed until an owner explicitly reconciles them (see
-                            // the Reconciliation screen) - a device that creates its own
-                            // sale already has it in Room before this listener ever fires,
-                            // so `existing` won't be null for that case, and this branch is
-                            // never reached for sales you recorded yourself.
+                            // it came from somewhere else (another team member). Rather than
+                            // defaulting straight to "unreviewed", check whether THIS device's
+                            // own copy of the linked inventory item already has a known cost
+                            // price - if so, derive the same reconciled financials locally
+                            // that the originating device would have (see
+                            // SMEViewModel.insertSale's itemCostKnown), since saleFinancials
+                            // is owner-write-only and the sender may never be able to push it.
+                            // A device that creates its own sale already has it in Room before
+                            // this listener ever fires, so `existing` won't be null for that
+                            // case, and none of this runs for sales you recorded yourself.
+                            val linkedItem = if (existing == null) {
+                                remote.inventoryItemId?.let { inventoryDao.getItemById(it) }
+                            } else null
+                            val itemCostKnown = linkedItem != null && linkedItem.costReconciled && linkedItem.costPrice > 0.0
+                            val derivedCostPriceSnapshot = linkedItem?.let { it.costPrice * remote.quantity } ?: 0.0
                             val financialsReconciled = existing?.financialsReconciled
-                                ?: (remote.inventoryItemId == null)
+                                ?: (remote.inventoryItemId == null || itemCostKnown)
+                            val profit = existing?.profit
+                                ?: if (itemCostKnown) remote.amount - derivedCostPriceSnapshot else 0.0
+                            val costPriceSnapshot = existing?.costPriceSnapshot
+                                ?: if (itemCostKnown) derivedCostPriceSnapshot else 0.0
                             // provisionalReceiptNumber only ever means something on the
                             // device that generated it - RemoteSale doesn't carry it.
                             // Preserve this device's own value; a sale pulled in from
@@ -85,8 +107,8 @@ class SaleSync(
                                     customerName = remote.customerName,
                                     description = remote.description,
                                     amount = remote.amount,
-                                    profit = existing?.profit ?: 0.0,
-                                    costPriceSnapshot = existing?.costPriceSnapshot ?: 0.0,
+                                    profit = profit,
+                                    costPriceSnapshot = costPriceSnapshot,
                                     inventoryItemId = remote.inventoryItemId,
                                     quantity = remote.quantity,
                                     date = remote.date,
@@ -96,7 +118,15 @@ class SaleSync(
                                     financialsReconciled = financialsReconciled,
                                     provisionalReceiptNumber = provisionalNumber,
                                     finalReceiptNumber = remote.finalReceiptNumber,
-                                    pendingSync = false
+                                    // Locally-derived financials (itemCostKnown, existing ==
+                                    // null) haven't been written to saleFinancials remotely -
+                                    // the sender may not have been able to (owner-write-only).
+                                    // Mark pendingSync so that IF this device is the owner's,
+                                    // the next pushPending() writes saleFinancials for real and
+                                    // the remote record converges; a non-owner device retries
+                                    // harmlessly (pushPending skips saleFinancials for it, same
+                                    // as always) and clears pendingSync via the sales-doc write.
+                                    pendingSync = existing?.pendingSync ?: itemCostKnown
                                 )
                             )
                         } catch (e: Exception) {

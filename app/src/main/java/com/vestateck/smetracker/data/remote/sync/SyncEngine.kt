@@ -83,7 +83,7 @@ class SyncEngine(
     private val activeListeners = mutableListOf<ListenerRegistration>()
 
     private val customerSync = CustomerSync(smeDao, firestore, externalScope)
-    private val saleSync = SaleSync(smeDao, firestore, externalScope)
+    private val saleSync = SaleSync(smeDao, inventoryDao, firestore, externalScope)
     private val debtSync = DebtSync(smeDao, firestore, externalScope)
     private val inventorySync = InventorySync(inventoryDao, firestore, externalScope)
     private val stockAdjustmentSync = StockAdjustmentSync(inventoryDao, firestore, externalScope)

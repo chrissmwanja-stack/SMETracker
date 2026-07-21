@@ -1,6 +1,7 @@
 // screens/DashboardScreen.kt
 package com.vestateck.smetracker.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,6 +12,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -27,6 +31,7 @@ import com.vestateck.smetracker.data.entities.InventoryItem
 import com.vestateck.smetracker.data.entities.Sale
 import com.vestateck.smetracker.navigation.Screen
 import com.vestateck.smetracker.ui.components.ReportRow
+import com.vestateck.smetracker.ui.components.SaleCostReviewDialog
 import com.vestateck.smetracker.utils.CurrencyUtils
 import com.vestateck.smetracker.utils.WindowSize
 import com.vestateck.smetracker.utils.rememberWindowSize
@@ -49,6 +54,9 @@ fun DashboardScreen(
     val windowSize = rememberWindowSize()
     val isTablet = windowSize != WindowSize.COMPACT
     val horizontalPadding = if (isTablet) 32.dp else 16.dp
+    // Which sale (if any) the owner has tapped to revise its cost - see the
+    // edit-cost dialog wired in below the LazyColumn.
+    var saleToEditCost by remember { mutableStateOf<Sale?>(null) }
 
     Scaffold(
         topBar = {
@@ -177,15 +185,50 @@ fun DashboardScreen(
                 item { EmptyStateCard("No sales recorded yet") }
             } else {
                 if (isTablet) {
-                    item { SalesGrid(sales = uiState.recentSales.take(10)) }
+                    item {
+                        SalesGrid(
+                            sales = uiState.recentSales.take(10),
+                            isOwner = isOwner,
+                            onEditCost = { sale -> saleToEditCost = sale }
+                        )
+                    }
                 } else {
                     items(items = uiState.recentSales.take(10), key = { it.id }) { sale ->
-                        SaleItem(sale = sale)
+                        SaleItem(
+                            sale = sale,
+                            editable = isOwner && sale.inventoryItemId != null,
+                            onClick = { saleToEditCost = sale }
+                        )
                     }
                 }
             }
             item { Spacer(Modifier.height(80.dp)) }
         }
+    }
+
+    // Edit-cost flow for a sale that's already reconciled (auto or manual)
+    // but turned out to need a different number - e.g. this particular unit
+    // was actually bought at a one-off price. Only ever offered for
+    // isOwner && sale.inventoryItemId != null (see SaleItem/SalesGrid
+    // above); a sale still awaiting its first review belongs in the
+    // Reconciliation screen, not here.
+    saleToEditCost?.let { sale ->
+        val linkedItem = uiState.inventoryItems.find { it.id == sale.inventoryItemId }
+        val currentCostPerUnit = if (sale.quantity > 0) sale.costPriceSnapshot / sale.quantity else 0.0
+        SaleCostReviewDialog(
+            title = "Edit Sale Cost",
+            sale = sale,
+            initialCostPricePerUnit = currentCostPerUnit,
+            supportingText = if (linkedItem != null) {
+                "Currently recorded at ${CurrencyUtils.formatUgx(currentCostPerUnit)} per unit"
+            } else null,
+            confirmLabel = "Save",
+            onDismiss = { saleToEditCost = null },
+            onConfirm = { costPricePerUnit ->
+                viewModel.editSaleCost(sale.id, costPricePerUnit)
+                saleToEditCost = null
+            }
+        )
     }
 }
 
@@ -414,12 +457,19 @@ private fun ReportsSection(isTablet: Boolean, uiState: DashboardUiState, onViewI
 }
 
 @Composable
-private fun SalesGrid(sales: List<Sale>) {
+private fun SalesGrid(sales: List<Sale>, isOwner: Boolean, onEditCost: (Sale) -> Unit) {
     val chunked = sales.chunked(2)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         chunked.forEach { pair ->
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                pair.forEach { sale -> SaleItem(sale = sale, modifier = Modifier.weight(1f)) }
+                pair.forEach { sale ->
+                    SaleItem(
+                        sale = sale,
+                        editable = isOwner && sale.inventoryItemId != null,
+                        onClick = { onEditCost(sale) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
@@ -453,14 +503,31 @@ private fun SummaryCard(modifier: Modifier = Modifier, label: String, value: Str
 }
 
 @Composable
-private fun SaleItem(sale: Sale, modifier: Modifier = Modifier) {
-    Card(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(10.dp), elevation = CardDefaults.cardElevation(1.dp)) {
+private fun SaleItem(sale: Sale, modifier: Modifier = Modifier, editable: Boolean = false, onClick: (() -> Unit)? = null) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .let { if (editable && onClick != null) it.clickable(onClick = onClick) else it },
+        shape = RoundedCornerShape(10.dp),
+        elevation = CardDefaults.cardElevation(1.dp)
+    ) {
         Row(modifier = Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(sale.customerName, fontWeight = FontWeight.Medium, fontSize = 15.sp)
                 Text(sale.description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text(CurrencyUtils.formatUgx(sale.amount), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary)
+            // Small tap affordance so it's clear a reconciled sale's cost can
+            // still be revised - only ever shown when it actually can be
+            // (isOwner && a tracked item is linked, decided by the caller).
+            if (editable) {
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = "Edit cost",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                    modifier = Modifier.size(16.dp).padding(start = 8.dp)
+                )
+            }
         }
     }
 }
