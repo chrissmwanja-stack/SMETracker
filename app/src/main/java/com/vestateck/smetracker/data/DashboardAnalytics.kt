@@ -76,11 +76,18 @@ data class DashboardAnalytics(
             val startOfWeek = TimeUtils.getStartOfWeek()
             val startOfMonth = TimeUtils.getStartOfMonth()
 
+            // Debt owed has two independent sources that never overlap:
+            // sales recorded with paymentMethod == DEBT, and standalone
+            // Debt records created directly from the Add Debt screen
+            // (these never generate a Sale - see AddDebtScreen). Only
+            // unpaid standalone debts count as money still owed; paid
+            // ones are already settled and shouldn't inflate this total.
             val paymentBreakdown = PaymentBreakdown(
                 cash = sales.filter { it.paymentMethod == PaymentMethod.CASH }.sumOf { it.amount },
                 mtnMoMo = sales.filter { it.paymentMethod == PaymentMethod.MTN_MOMO }.sumOf { it.amount },
                 airtelMoney = sales.filter { it.paymentMethod == PaymentMethod.AIRTEL_MONEY }.sumOf { it.amount },
-                debt = sales.filter { it.paymentMethod == PaymentMethod.DEBT }.sumOf { it.amount }
+                debt = sales.filter { it.paymentMethod == PaymentMethod.DEBT }.sumOf { it.amount } +
+                        debts.filter { !it.isPaid }.sumOf { it.amount }
             )
 
             var dailyCount = 0; var dailyRevenue = 0.0; var dailyProfit = 0.0

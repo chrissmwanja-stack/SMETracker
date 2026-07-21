@@ -250,6 +250,24 @@ class DashboardAnalyticsTest {
     }
 
     @Test
+    fun `payment breakdown debt total includes unpaid standalone debts alongside DEBT sales`() {
+        val analytics = DashboardAnalytics.from(
+            sales = listOf(
+                sale(id = "s1", amount = 100.0, paymentMethod = PaymentMethod.CASH),
+                sale(id = "s2", amount = 300.0, paymentMethod = PaymentMethod.DEBT)
+            ),
+            debts = listOf(
+                debt(id = "d1", amount = 200.0, isPaid = false), // owed - counts
+                debt(id = "d2", amount = 500.0, isPaid = true)   // settled - excluded
+            ),
+            inventoryItems = emptyList()
+        )
+        // 300 from the DEBT sale + 200 from the unpaid standalone debt.
+        // The paid standalone debt (500) is settled, so it's excluded.
+        assertEquals(500.0, analytics.paymentBreakdown.debt, 0.0)
+    }
+
+    @Test
     fun `total customer count includes walk-in sales not linked to a saved customer`() {
         val analytics = DashboardAnalytics.from(
             sales = listOf(

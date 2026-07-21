@@ -128,6 +128,15 @@ service cloud.firestore {
       allow delete: if isOwnerOf(businessId);
     }
 
+    // Shared task list - no worker/owner split, same as customers (see
+    // TaskSync doc comment). Without this rule the default-deny leaves
+    // every read/write silently rejected and tasks stuck at
+    // pendingSync = true forever.
+    match /businesses/{businessId}/tasks/{taskId} {
+      allow read, create, update: if isMemberOf(businessId);
+      allow delete: if isOwnerOf(businessId);
+    }
+
     match /businesses/{businessId}/debts/{debtId} {
       allow read, create, update: if isMemberOf(businessId);
       allow delete: if isOwnerOf(businessId);
