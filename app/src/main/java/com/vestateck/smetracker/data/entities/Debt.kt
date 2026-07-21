@@ -25,5 +25,6 @@ data class Debt(
     val isPaid: Boolean = false,
     val dueDate: Long? = null,
     val date: Long = System.currentTimeMillis(),
-    val pendingSync: Boolean = true
+    val pendingSync: Boolean = true,
+    val isDeleted: Boolean = false
 )

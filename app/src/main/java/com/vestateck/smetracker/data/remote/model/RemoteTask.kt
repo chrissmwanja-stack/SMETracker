@@ -12,5 +12,6 @@ data class RemoteTask(
     val dueDate: Long? = null,
     val isCompleted: Boolean = false,
     val completedDate: Long? = null,
-    val createdDate: Long = System.currentTimeMillis()
+    val createdDate: Long = System.currentTimeMillis(),
+    val isDeleted: Boolean = false
 )

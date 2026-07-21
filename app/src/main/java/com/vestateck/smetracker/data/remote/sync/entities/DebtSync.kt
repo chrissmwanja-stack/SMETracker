@@ -40,7 +40,8 @@ class DebtSync(
                                 isPaid = remote.isPaid,
                                 dueDate = remote.dueDate,
                                 date = remote.date,
-                                pendingSync = false
+                                pendingSync = false,
+                                isDeleted = remote.isDeleted
                             )
                         )
                     }
@@ -64,7 +65,8 @@ class DebtSync(
                             isPaid = debt.isPaid,
                             dueDate = debt.dueDate,
                             date = debt.date,
-                            recordedBy = myPhone
+                            recordedBy = myPhone,
+                            isDeleted = debt.isDeleted
                         )
                     ).await()
                 smeDao.clearDebtPendingSync(debt.id)

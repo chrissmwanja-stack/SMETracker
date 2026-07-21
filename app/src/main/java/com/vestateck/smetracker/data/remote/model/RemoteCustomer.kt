@@ -9,5 +9,6 @@ data class RemoteCustomer(
     val name: String = "",
     val phone: String = "",
     val email: String = "",
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val isDeleted: Boolean = false
 )

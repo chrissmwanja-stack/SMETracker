@@ -1,5 +1,9 @@
 package com.vestateck.smetracker.data.remote.sync
 
+import android.content.Context
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.vestateck.smetracker.data.dao.InventoryDao
 import com.vestateck.smetracker.data.dao.SMEDao
 import com.vestateck.smetracker.data.remote.model.MemberRole
@@ -11,10 +15,6 @@ import com.vestateck.smetracker.data.remote.sync.entities.InventorySync
 import com.vestateck.smetracker.data.remote.sync.entities.SaleSync
 import com.vestateck.smetracker.data.remote.sync.entities.StockAdjustmentSync
 import com.vestateck.smetracker.data.remote.sync.entities.TaskSync
-import com.google.firebase.firestore.DocumentReference
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.ListenerRegistration
-import android.content.Context
 import com.vestateck.smetracker.notifications.ReconciliationNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,54 +27,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Syncs Customer, Sale (+ SaleFinancials), Debt, InventoryItem (+ InventoryCost),
- * Expense, and Task between Room and Firestore, in both directions. Extends the
- * original Phase 3 Customer-only proof to every entity, following the same
- * read/write pattern throughout:
- *
- * Read path: one Firestore snapshot listener per top-level collection this
- * session is allowed to read. Every added/modified doc is upserted into Room
- * with pendingSync = false (it just came FROM the server).
- *
- * Write path: requestPush() is called by the ViewModel after any local
- * mutation. It reads every locally-pending row across every entity and
- * pushes each to Firestore, clearing pendingSync on success. Still no
- * retry/backoff/WorkManager by design — a failed push just gets retried on
- * the next requestPush() (next edit, or next attachListeners() catch-up).
- *
- * This class is the orchestrator only: session/lifecycle handling and the
- * reconciliation-pending notifier live here. The actual per-entity read/write
- * logic lives in data/remote/sync/entities/ — one class per entity, each
- * documenting its own owner/worker access rules (which mirror
- * firestore.rules exactly). See each *Sync class's doc comment for details
- * specific to that entity; the shared themes are:
- *
- * - saleFinancials and inventoryCosts are owner-write-only (SaleSync,
- *   InventorySync). The financials/cost half of a worker-recorded sale or
- *   inventory item simply doesn't exist in Firestore until an owner
- *   reconciles it via the Reconciliation screen.
- * - A worker's expenses listener is scoped with .whereEqualTo("recordedBy",
- *   myPhone) (ExpenseSync), since Firestore requires list queries to be
- *   provably restricted the same way the security rule restricts them.
- *
- * Known limitations, carried over from the original proof and still true
- * for every entity here:
- * - Deletions are not synced in either direction.
- * - No conflict resolution — last write wins, whichever side writes last.
- * - Push only runs when requested, not on a timer or connectivity change.
- * - The reconciliation-pending notification (see ReconciliationNotifier) is
- *   local only — it requires this SyncEngine's process to be alive and
- *   collecting. It does NOT wake the app if killed; that would need FCM plus
- *   a Cloud Function watching the sales/inventory collections server-side,
- *   which doesn't exist yet.
+ * Orchestrates bidirectional synchronization between local Room DB and Cloud Firestore.
+ * Delegated entity sync managers carry out the actual entity reads and writes.
  */
 class SyncEngine(
     private val smeDao: SMEDao,
     private val inventoryDao: InventoryDao,
     private val sessionManager: SessionManager,
     private val externalScope: CoroutineScope,
-    // Application context only — used solely to post/cancel the local
-    // reconciliation-pending notification (see ReconciliationNotifier).
     private val context: Context,
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 ) {
@@ -90,7 +50,6 @@ class SyncEngine(
     private val expenseSync = ExpenseSync(smeDao, firestore, externalScope)
     private val taskSync = TaskSync(smeDao, firestore, externalScope)
 
-    /** Call once, e.g. from MainActivity, after the user has entered a business. */
     fun start() {
         if (listenerJob != null) return
         ReconciliationNotifier.ensureChannel(context)
@@ -105,7 +64,6 @@ class SyncEngine(
         }
     }
 
-    /** Call on sign-out so we stop listening on behalf of the wrong business. */
     fun stop() {
         activeListeners.forEach { it.remove() }
         activeListeners.clear()
@@ -116,7 +74,6 @@ class SyncEngine(
         ReconciliationNotifier.clear(context)
     }
 
-    /** Fire-and-forget from the ViewModel after any local mutation, any entity. */
     fun requestPush() {
         externalScope.launch(Dispatchers.IO) { pushAllPending() }
     }
@@ -135,16 +92,11 @@ class SyncEngine(
         activeListeners += expenseSync.attachListener(businessRef, role, myPhone)
         activeListeners += taskSync.attachListener(businessRef)
 
-        // Owner-only collections — a worker's device never attaches these at
-        // all, matching what the security rules already deny them.
         if (role == MemberRole.OWNER) {
             activeListeners += saleSync.attachSaleFinancialsListener(businessRef)
             activeListeners += inventorySync.attachInventoryCostListener(businessRef)
         }
 
-        // Owner-only local notification for the reconciliation queue — see
-        // ReconciliationNotifier's class doc. Re-attaching listeners (e.g. on
-        // re-login) restarts this cleanly rather than stacking collectors.
         notifierJob?.cancel()
         notifierJob = if (role == MemberRole.OWNER) {
             externalScope.launch(Dispatchers.IO) {
@@ -157,8 +109,6 @@ class SyncEngine(
             }
         } else null
 
-        // Initial catch-up push in case there are locally-pending writes from
-        // before this business was attached (e.g. offline signup/edits).
         externalScope.launch(Dispatchers.IO) { pushAllPending() }
     }
 

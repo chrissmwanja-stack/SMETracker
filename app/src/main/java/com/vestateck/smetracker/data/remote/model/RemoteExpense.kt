@@ -24,5 +24,6 @@ data class RemoteExpense(
     val status: ExpenseStatus = ExpenseStatus.PENDING,
     val approvedBy: String? = null,
     val approvedAt: Long? = null,
-    val receiptUrl: String? = null
+    val receiptUrl: String? = null,
+    val isDeleted: Boolean = false
 )

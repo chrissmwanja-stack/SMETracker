@@ -52,5 +52,6 @@ data class InventoryItem(
     // of the sync. Also what tells pushPending "re-upload", vs. "already
     // uploaded, don't repeat the bandwidth cost" on every unrelated edit.
     @ColumnInfo(defaultValue = "0") val imagePendingUpload: Boolean = false,
-    val pendingSync: Boolean = true
+    val pendingSync: Boolean = true,
+    val isDeleted: Boolean = false
 )

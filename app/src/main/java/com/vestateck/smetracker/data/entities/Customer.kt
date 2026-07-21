@@ -11,5 +11,6 @@ data class Customer(
     val phone: String = "",
     val email: String = "",
     val createdAt: Long = System.currentTimeMillis(),
-    val pendingSync: Boolean = true
+    val pendingSync: Boolean = true,
+    val isDeleted: Boolean = false
 )

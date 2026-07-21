@@ -11,21 +11,21 @@ data class TopCustomerResult(val customerName: String, val totalAmount: Double)
 @Dao
 interface SaleDao {
     // ✅ OPTIMIZED: Let SQLite sort and limit, don't pull all sales into memory
-    @Query("SELECT * FROM sales ORDER BY date DESC LIMIT :limit")
+    @Query("SELECT * FROM sales WHERE isDeleted = 0 ORDER BY date DESC LIMIT :limit")
     fun getRecentSales(limit: Int = 10): Flow<List<Sale>>
 
     // ✅ OPTIMIZED: Let SQLite calculate the sum
-    @Query("SELECT IFNULL(SUM(amount), 0.0) FROM sales WHERE date >= :startOfDay")
+    @Query("SELECT IFNULL(SUM(amount), 0.0) FROM sales WHERE isDeleted = 0 AND date >= :startOfDay")
     fun getTodayRevenue(startOfDay: Long): Flow<Double>
 
-    @Query("SELECT IFNULL(SUM(amount), 0.0) FROM sales")
+    @Query("SELECT IFNULL(SUM(amount), 0.0) FROM sales WHERE isDeleted = 0")
     fun getTotalRevenue(): Flow<Double>
 
     // ✅ OPTIMIZED: Let SQLite group and find top customers
     @Query("""
         SELECT customerName, SUM(amount) as totalAmount 
         FROM sales 
-        WHERE customerName IS NOT NULL AND customerName != ''
+        WHERE isDeleted = 0 AND customerName IS NOT NULL AND customerName != ''
         GROUP BY customerName 
         ORDER BY totalAmount DESC 
         LIMIT 5

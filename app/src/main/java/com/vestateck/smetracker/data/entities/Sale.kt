@@ -74,5 +74,6 @@ data class Sale(
     //     present, falling back to provisionalReceiptNumber otherwise.
     @ColumnInfo(defaultValue = "''") val provisionalReceiptNumber: String = "",
     val finalReceiptNumber: String? = null,
-    val pendingSync: Boolean = true
+    val pendingSync: Boolean = true,
+    val isDeleted: Boolean = false // Tombstone flag for multi-device sync
 )

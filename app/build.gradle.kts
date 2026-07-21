@@ -61,6 +61,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation("androidx.fragment:fragment-ktx:1.8.5")
 
+    // Background Offline Sync Execution
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
@@ -85,6 +88,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+
 
     testImplementation(libs.junit)
     // Needed to test SMEViewModel: viewModelScope.launch runs on

@@ -21,7 +21,7 @@ class SMERepository(
 
     suspend fun insertSale(sale: Sale) = smeDao.insertSale(sale)
     suspend fun updateSale(sale: Sale) = smeDao.insertSale(sale)
-    suspend fun deleteSale(sale: Sale) = smeDao.deleteSale(sale)
+    suspend fun deleteSale(sale: Sale) = smeDao.markSaleAsDeleted(sale.id)
 
     // ── Reconciliation ───────────────────────────────────────────
     val unreconciledSales: Flow<List<Sale>> = smeDao.getUnreconciledSales()
@@ -40,7 +40,7 @@ class SMERepository(
     fun searchCustomers(query: String): Flow<List<Customer>> = smeDao.searchCustomers(query)
     suspend fun insertCustomer(customer: Customer) = smeDao.insertCustomer(customer)
     suspend fun updateCustomer(customer: Customer) = smeDao.updateCustomer(customer)
-    suspend fun deleteCustomer(customer: Customer) = smeDao.deleteCustomer(customer)
+    suspend fun deleteCustomer(customer: Customer) = smeDao.markCustomerAsDeleted(customer.id)
 
     // ── Debts ────────────────────────────────────────────────────
     val allDebts: Flow<List<Debt>> = smeDao.getAllDebts()
@@ -49,7 +49,7 @@ class SMERepository(
 
     suspend fun insertDebt(debt: Debt) = smeDao.insertDebt(debt)
     suspend fun updateDebt(debt: Debt) = smeDao.insertDebt(debt)
-    suspend fun deleteDebt(debt: Debt) = smeDao.deleteDebt(debt)
+    suspend fun deleteDebt(debt: Debt) = smeDao.markDebtAsDeleted(debt.id)
     suspend fun markDebtPaid(debtId: String) = smeDao.markDebtAsPaid(debtId)
 
     // ── Inventory ────────────────────────────────────────────────
@@ -63,7 +63,7 @@ class SMERepository(
     suspend fun insertInventoryItem(item: InventoryItem) = inventoryDao.insert(item)
     suspend fun insertInventoryItems(items: List<InventoryItem>) = inventoryDao.insertAll(items)
     suspend fun updateInventoryItem(item: InventoryItem) = inventoryDao.update(item)
-    suspend fun deleteInventoryItem(item: InventoryItem) = inventoryDao.delete(item)
+    suspend fun deleteInventoryItem(item: InventoryItem) = inventoryDao.markItemAsDeleted(item.id)
     suspend fun adjustStock(itemId: String, amount: Int) = inventoryDao.adjustStock(itemId, amount, System.currentTimeMillis())
 
     fun getAdjustmentsForItem(itemId: String) = inventoryDao.getAdjustmentsForItem(itemId)
@@ -109,14 +109,14 @@ class SMERepository(
     fun getAllExpenses(): Flow<List<Expense>> = smeDao.getAllExpenses()
     fun getTotalExpenses(): Flow<Double?> = smeDao.getTotalExpenses()
     suspend fun addExpense(expense: Expense) = smeDao.insertExpense(expense)
-    suspend fun deleteExpense(expense: Expense) = smeDao.deleteExpense(expense)
+    suspend fun deleteExpense(expense: Expense) = smeDao.markExpenseAsDeleted(expense.id)
 
     // ── Tasks ────────────────────────────────────────────────────
     fun getPendingTasks(): Flow<List<Task>> = smeDao.getPendingTasks()
     fun getPendingTaskCount(): Flow<Long> = smeDao.getPendingTaskCount()
     suspend fun addTask(task: Task) = smeDao.insertTask(task)
     suspend fun completeTask(taskId: String) = smeDao.markTaskAsCompleted(taskId, System.currentTimeMillis())
-    suspend fun deleteTask(task: Task) = smeDao.deleteTask(task)
+    suspend fun deleteTask(task: Task) = smeDao.markTaskAsDeleted(task.id)
 
     private fun getStartOfDay(): Long {
         val calendar = Calendar.getInstance()

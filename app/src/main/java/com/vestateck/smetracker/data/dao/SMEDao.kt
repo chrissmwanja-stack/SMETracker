@@ -7,39 +7,21 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface SMEDao {
     // -- Sales -----------------------------------------------------
-    @Query("SELECT * FROM sales ORDER BY date DESC")
+    @Query("SELECT * FROM sales WHERE isDeleted = 0 ORDER BY date DESC")
     fun getAllSales(): Flow<List<Sale>>
 
     @Query("SELECT * FROM sales WHERE id = :saleId")
     suspend fun getSaleById(saleId: String): Sale?
 
-    @Query("SELECT SUM(amount) FROM sales")
+    @Query("SELECT SUM(amount) FROM sales WHERE isDeleted = 0")
     fun getTotalRevenue(): Flow<Double?>
 
-    @Query("SELECT SUM(amount) FROM sales WHERE date >= :startOfDay")
+    @Query("SELECT SUM(amount) FROM sales WHERE isDeleted = 0 AND date >= :startOfDay")
     fun getTodayRevenue(startOfDay: Long): Flow<Double?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSale(sale: Sale): Long
 
-    // Sync pull, financials half only: costPriceSnapshot/profit come from a
-    // SEPARATE Firestore listener (saleFinancials) than the core sale fields
-    // (sales), which can arrive in either order. This patches just those two
-    // columns (plus financialsReconciled - see below) so it never clobbers
-    // whatever the sales listener already wrote (or will write) for the
-    // rest of the row.
-    //
-    // financialsReconciled = 1 here is required, not cosmetic: a
-    // saleFinancials document only ever exists in Firestore because an
-    // owner already reconciled it (see SaleSync class doc - it's
-    // owner-write-only and only ever written from reconcileSaleFinancials).
-    // Without setting the flag here, a device that pulls this sale fresh
-    // (e.g. after logout/login, or a first pull on another device) derives
-    // financialsReconciled independently from its own local copy of the
-    // linked inventory item's cost (see SaleSync.attachSaleListener) and
-    // can land on false even though the real financials already arrived -
-    // which put the sale right back in the Reconciliation queue for an
-    // owner to redo work that was already done.
     @Query(
         "UPDATE sales SET costPriceSnapshot = :costPriceSnapshot, profit = :profit, " +
                 "financialsReconciled = 1 WHERE id = :saleId"
@@ -49,14 +31,14 @@ interface SMEDao {
     @Delete
     suspend fun deleteSale(sale: Sale)
 
+    @Query("UPDATE sales SET isDeleted = 1, pendingSync = 1 WHERE id = :saleId")
+    suspend fun markSaleAsDeleted(saleId: String)
+
     // -- Reconciliation (Sale) -------------------------------------
-    // Owner-only queries backing the Reconciliation screen - surfaces sales
-    // (almost always worker-recorded, tied to a tracked inventory item)
-    // whose costPriceSnapshot/profit an owner hasn't reviewed yet.
-    @Query("SELECT * FROM sales WHERE financialsReconciled = 0 ORDER BY date DESC")
+    @Query("SELECT * FROM sales WHERE isDeleted = 0 AND financialsReconciled = 0 ORDER BY date DESC")
     fun getUnreconciledSales(): Flow<List<Sale>>
 
-    @Query("SELECT COUNT(*) FROM sales WHERE financialsReconciled = 0")
+    @Query("SELECT COUNT(*) FROM sales WHERE isDeleted = 0 AND financialsReconciled = 0")
     fun getUnreconciledSalesCount(): Flow<Long>
 
     @Query(
@@ -72,23 +54,17 @@ interface SMEDao {
     @Query("UPDATE sales SET pendingSync = 0 WHERE id = :saleId")
     suspend fun clearSalePendingSync(saleId: String)
 
-    // Sign-out clear: deletes only the already-synced cache, leaves any
-    // pendingSync = 1 rows in place so they aren't lost before they can
-    // sync. See SMEDatabase.clearSyncedDataSuspending().
     @Query("DELETE FROM sales WHERE pendingSync = 0")
     suspend fun deleteSyncedSales()
 
-    // Called by SaleSync.pushPending once a sale has successfully claimed
-    // its authoritative number from businesses/{businessId}/counters/
-    // receiptSequence via a Firestore transaction.
     @Query("UPDATE sales SET finalReceiptNumber = :finalReceiptNumber WHERE id = :saleId")
     suspend fun markSaleReceiptFinalized(saleId: String, finalReceiptNumber: String)
 
     // -- Customers ---------------------------------------------------
-    @Query("SELECT * FROM customers ORDER BY name ASC")
+    @Query("SELECT * FROM customers WHERE isDeleted = 0 ORDER BY name ASC")
     fun getAllCustomers(): Flow<List<Customer>>
 
-    @Query("SELECT * FROM customers WHERE name LIKE '%' || :query || '%' OR phone LIKE '%' || :query || '%' ORDER BY name ASC")
+    @Query("SELECT * FROM customers WHERE isDeleted = 0 AND (name LIKE '%' || :query || '%' OR phone LIKE '%' || :query || '%') ORDER BY name ASC")
     fun searchCustomers(query: String): Flow<List<Customer>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -100,7 +76,10 @@ interface SMEDao {
     @Delete
     suspend fun deleteCustomer(customer: Customer)
 
-    // -- Sync (Customer, Phase 3 proof) ------------------------------
+    @Query("UPDATE customers SET isDeleted = 1, pendingSync = 1 WHERE id = :customerId")
+    suspend fun markCustomerAsDeleted(customerId: String)
+
+    // -- Sync (Customer) ----------------------------------------------
     @Query("SELECT * FROM customers WHERE pendingSync = 1")
     suspend fun getPendingSyncCustomers(): List<Customer>
 
@@ -111,13 +90,13 @@ interface SMEDao {
     suspend fun deleteSyncedCustomers()
 
     // -- Debts ---------------------------------------------------------
-    @Query("SELECT * FROM debts ORDER BY date DESC")
+    @Query("SELECT * FROM debts WHERE isDeleted = 0 ORDER BY date DESC")
     fun getAllDebts(): Flow<List<Debt>>
 
-    @Query("SELECT * FROM debts WHERE isPaid = 0 ORDER BY dueDate ASC")
+    @Query("SELECT * FROM debts WHERE isDeleted = 0 AND isPaid = 0 ORDER BY dueDate ASC")
     fun getUnpaidDebts(): Flow<List<Debt>>
 
-    @Query("SELECT SUM(amount) FROM debts WHERE isPaid = 0")
+    @Query("SELECT SUM(amount) FROM debts WHERE isDeleted = 0 AND isPaid = 0")
     fun getTotalOutstandingDebt(): Flow<Double?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -128,6 +107,9 @@ interface SMEDao {
 
     @Delete
     suspend fun deleteDebt(debt: Debt)
+
+    @Query("UPDATE debts SET isDeleted = 1, pendingSync = 1 WHERE id = :debtId")
+    suspend fun markDebtAsDeleted(debtId: String)
 
     // -- Sync (Debt) ---------------------------------------------------
     @Query("SELECT * FROM debts WHERE pendingSync = 1")
@@ -140,13 +122,13 @@ interface SMEDao {
     suspend fun deleteSyncedDebts()
 
     // -- Expenses --------------------------------------------------
-    @Query("SELECT * FROM expenses ORDER BY date DESC")
+    @Query("SELECT * FROM expenses WHERE isDeleted = 0 ORDER BY date DESC")
     fun getAllExpenses(): Flow<List<Expense>>
 
-    @Query("SELECT * FROM expenses WHERE id = :expenseId")
+    @Query("SELECT * FROM expenses WHERE isDeleted = 0 AND id = :expenseId")
     suspend fun getExpenseById(expenseId: String): Expense?
 
-    @Query("SELECT SUM(amount) FROM expenses")
+    @Query("SELECT SUM(amount) FROM expenses WHERE isDeleted = 0")
     fun getTotalExpenses(): Flow<Double?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -154,6 +136,9 @@ interface SMEDao {
 
     @Delete
     suspend fun deleteExpense(expense: Expense)
+
+    @Query("UPDATE expenses SET isDeleted = 1, pendingSync = 1 WHERE id = :expenseId")
+    suspend fun markExpenseAsDeleted(expenseId: String)
 
     // -- Sync (Expense) ----------------------------------------------
     @Query("SELECT * FROM expenses WHERE pendingSync = 1")
@@ -165,9 +150,6 @@ interface SMEDao {
     @Query("DELETE FROM expenses WHERE pendingSync = 0")
     suspend fun deleteSyncedExpenses()
 
-    // Called by ExpenseSync after a picked receipt photo finishes uploading
-    // to Firebase Storage - records the resulting download URL and clears
-    // the upload-pending flag. Mirrors InventoryDao.markImageUploaded.
     @Query(
         "UPDATE expenses SET receiptUrl = :receiptUrl, receiptPendingUpload = 0 " +
                 "WHERE id = :expenseId"
@@ -175,10 +157,10 @@ interface SMEDao {
     suspend fun markReceiptUploaded(expenseId: String, receiptUrl: String)
 
     // -- Tasks -----------------------------------------------------
-    @Query("SELECT * FROM tasks WHERE isCompleted = 0 ORDER BY dueDate ASC")
+    @Query("SELECT * FROM tasks WHERE isDeleted = 0 AND isCompleted = 0 ORDER BY dueDate ASC")
     fun getPendingTasks(): Flow<List<Task>>
 
-    @Query("SELECT COUNT(*) FROM tasks WHERE isCompleted = 0")
+    @Query("SELECT COUNT(*) FROM tasks WHERE isDeleted = 0 AND isCompleted = 0")
     fun getPendingTaskCount(): Flow<Long>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -189,6 +171,9 @@ interface SMEDao {
 
     @Delete
     suspend fun deleteTask(task: Task)
+
+    @Query("UPDATE tasks SET isDeleted = 1, pendingSync = 1 WHERE id = :taskId")
+    suspend fun markTaskAsDeleted(taskId: String)
 
     // -- Sync (Task) -------------------------------------------------
     @Query("SELECT * FROM tasks WHERE pendingSync = 1")

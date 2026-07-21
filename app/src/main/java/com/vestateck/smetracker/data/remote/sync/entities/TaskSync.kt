@@ -40,7 +40,8 @@ class TaskSync(
                                     isCompleted = remote.isCompleted,
                                     completedDate = remote.completedDate,
                                     createdDate = remote.createdDate,
-                                    pendingSync = false
+                                    pendingSync = false,
+                                    isDeleted = remote.isDeleted
                                 )
                             )
                         } catch (e: Exception) {
@@ -67,7 +68,8 @@ class TaskSync(
                             dueDate = task.dueDate,
                             isCompleted = task.isCompleted,
                             completedDate = task.completedDate,
-                            createdDate = task.createdDate
+                            createdDate = task.createdDate,
+                            isDeleted = task.isDeleted
                         )
                     ).await()
 

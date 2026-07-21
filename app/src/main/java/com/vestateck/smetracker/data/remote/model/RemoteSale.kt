@@ -25,5 +25,6 @@ data class RemoteSale(
     val recordedBy: String = "",
     // Authoritative receipt number (e.g. "INV-0001"), claimed via a
     // Firestore transaction in SaleSync.pushPending. Null until claimed.
-    val finalReceiptNumber: String? = null
+    val finalReceiptNumber: String? = null,
+    val isDeleted: Boolean = false
 )

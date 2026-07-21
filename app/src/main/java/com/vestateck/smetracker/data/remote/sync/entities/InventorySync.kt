@@ -75,7 +75,8 @@ class InventorySync(
                                     // ahead of that upload's push shouldn't make
                                     // pushPending think there's nothing left to do.
                                     imagePendingUpload = existing?.imagePendingUpload ?: false,
-                                    pendingSync = false
+                                    pendingSync = false,
+                                    isDeleted = remote.isDeleted
                                 )
                             )
                         } catch (e: Exception) {
@@ -151,7 +152,8 @@ class InventorySync(
                             // reconciles the cost), only fill in myPhone for a
                             // brand-new local-only row.
                             recordedBy = item.recordedBy.ifBlank { myPhone },
-                            imageUrl = imageUrl
+                            imageUrl = imageUrl,
+                            isDeleted = item.isDeleted
                         )
                     ).await()
 

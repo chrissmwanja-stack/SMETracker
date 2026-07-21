@@ -15,5 +15,6 @@ data class Task(
     val isCompleted: Boolean = false,
     val completedDate: Long? = null,
     val createdDate: Long = System.currentTimeMillis(),
-    val pendingSync: Boolean = true
+    val pendingSync: Boolean = true,
+    val isDeleted: Boolean = false
 )

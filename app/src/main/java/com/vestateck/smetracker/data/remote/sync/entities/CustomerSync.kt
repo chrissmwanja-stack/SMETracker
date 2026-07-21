@@ -37,7 +37,8 @@ class CustomerSync(
                                 phone = remote.phone,
                                 email = remote.email,
                                 createdAt = remote.createdAt,
-                                pendingSync = false
+                                pendingSync = false,
+                                isDeleted = remote.isDeleted
                             )
                         )
                     }
@@ -57,7 +58,8 @@ class CustomerSync(
                             name = customer.name,
                             phone = customer.phone,
                             email = customer.email,
-                            createdAt = customer.createdAt
+                            createdAt = customer.createdAt,
+                            isDeleted = customer.isDeleted
                         )
                     )
                     .await()

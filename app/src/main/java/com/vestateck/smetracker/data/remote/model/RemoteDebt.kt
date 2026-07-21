@@ -13,5 +13,6 @@ data class RemoteDebt(
     val isPaid: Boolean = false,
     val dueDate: Long? = null,
     val date: Long = System.currentTimeMillis(),
-    val recordedBy: String = ""
+    val recordedBy: String = "",
+    val isDeleted: Boolean = false
 )

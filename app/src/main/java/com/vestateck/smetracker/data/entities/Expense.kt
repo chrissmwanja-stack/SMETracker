@@ -39,5 +39,6 @@ data class Expense(
     // ExpenseSync has uploaded it and recorded receiptUrl. Mirrors
     // InventoryItem.imagePendingUpload.
     @androidx.room.ColumnInfo(defaultValue = "0") val receiptPendingUpload: Boolean = false,
-    val pendingSync: Boolean = true
+    val pendingSync: Boolean = true,
+    val isDeleted: Boolean = false
 )

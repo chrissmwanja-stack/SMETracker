@@ -118,15 +118,8 @@ class SaleSync(
                                     financialsReconciled = financialsReconciled,
                                     provisionalReceiptNumber = provisionalNumber,
                                     finalReceiptNumber = remote.finalReceiptNumber,
-                                    // Locally-derived financials (itemCostKnown, existing ==
-                                    // null) haven't been written to saleFinancials remotely -
-                                    // the sender may not have been able to (owner-write-only).
-                                    // Mark pendingSync so that IF this device is the owner's,
-                                    // the next pushPending() writes saleFinancials for real and
-                                    // the remote record converges; a non-owner device retries
-                                    // harmlessly (pushPending skips saleFinancials for it, same
-                                    // as always) and clears pendingSync via the sales-doc write.
-                                    pendingSync = existing?.pendingSync ?: itemCostKnown
+                                    pendingSync = existing?.pendingSync ?: itemCostKnown,
+                                    isDeleted = remote.isDeleted
                                 )
                             )
                         } catch (e: Exception) {
@@ -228,7 +221,8 @@ class SaleSync(
                                 // pendingSync) is the ORIGINAL creator and must be kept,
                                 // not overwritten with whoever is pushing right now.
                                 recordedBy = sale.recordedBy.ifBlank { myPhone },
-                                finalReceiptNumber = finalReceiptNumber
+                                finalReceiptNumber = finalReceiptNumber,
+                                isDeleted = sale.isDeleted
                             )
                         ).await()
 

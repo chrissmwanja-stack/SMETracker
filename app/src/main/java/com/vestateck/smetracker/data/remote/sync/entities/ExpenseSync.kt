@@ -76,7 +76,8 @@ class ExpenseSync(
                             localReceiptPath = existing?.localReceiptPath,
                             receiptUrl = remote.receiptUrl,
                             receiptPendingUpload = stillPendingUpload,
-                            pendingSync = false
+                            pendingSync = false,
+                            isDeleted = remote.isDeleted
                         )
                     )
                 }
@@ -133,7 +134,8 @@ class ExpenseSync(
                             status = status,
                             approvedBy = approvedBy,
                             approvedAt = approvedAt,
-                            receiptUrl = receiptUrl
+                            receiptUrl = receiptUrl,
+                            isDeleted = expense.isDeleted
                         )
                     ).await()
 

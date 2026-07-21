@@ -22,5 +22,6 @@ data class RemoteInventoryItem(
     // uploaded for this item yet. See InventorySync.pushPending for the
     // upload step and InventoryItem's doc comment for why this is separate
     // from the local device's cached copy.
-    val imageUrl: String = ""
+    val imageUrl: String = "",
+    val isDeleted: Boolean = false
 )
