@@ -15,3 +15,9 @@
 local.properties
 
 .idea/
+
+# Release signing - never commit the real keystore or its passwords.
+# Use app/keystore.properties.example as the template.
+app/keystore.properties
+*.jks
+*.keystore

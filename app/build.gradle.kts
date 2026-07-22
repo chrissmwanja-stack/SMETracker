@@ -8,6 +8,19 @@ plugins {
 
 }
 
+// Release signing reads from app/keystore.properties, which is gitignored
+// and never committed - see keystore.properties.example for the format and
+// README.md's "Release signing" section for how to generate the keystore.
+// If the file is absent (fresh clone, CI), releaseSigningProps stays empty
+// and the release build type below simply has no signingConfig, matching
+// the existing CI setup which only builds/lints debug.
+val keystorePropertiesFile = file("keystore.properties")
+val releaseSigningProps = java.util.Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
 android {
     namespace = "com.vestateck.smetracker"
     compileSdk = 37
@@ -21,10 +34,24 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = file(releaseSigningProps.getProperty("storeFile"))
+                storePassword = releaseSigningProps.getProperty("storePassword")
+                keyAlias = releaseSigningProps.getProperty("keyAlias")
+                keyPassword = releaseSigningProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

@@ -5,15 +5,14 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
+        <!--
+        Session state (phone number, business_id, active role) - excluded so
+        a restore can't leave the app believing it's logged in without a
+        matching live Firebase Auth session. See SessionManager.kt.
         -->
+        <exclude domain="datastore" path="sme_session.preferences_pb"/>
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="datastore" path="sme_session.preferences_pb"/>
     </device-transfer>
-    -->
 </data-extraction-rules>

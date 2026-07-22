@@ -7,7 +7,11 @@
 -->
 <full-backup-content>
     <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    Session state (phone number, business_id, active role) lives in this
+    DataStore file. Excluded because a restore onto a new/reset device would
+    make the app believe it's logged in as a business/role without Firebase
+    Auth actually having a matching live session - the two would go out of
+    sync silently. See SessionManager.kt for what's stored here.
+    -->
+    <exclude domain="datastore" path="sme_session.preferences_pb"/>
 </full-backup-content>
