@@ -10,9 +10,9 @@
         a restore can't leave the app believing it's logged in without a
         matching live Firebase Auth session. See SessionManager.kt.
         -->
-        <exclude domain="datastore" path="sme_session.preferences_pb"/>
+        <exclude domain="file" path="datastore/sme_session.preferences_pb"/>
     </cloud-backup>
     <device-transfer>
-        <exclude domain="datastore" path="sme_session.preferences_pb"/>
+        <exclude domain="file" path="datastore/sme_session.preferences_pb"/>
     </device-transfer>
 </data-extraction-rules>

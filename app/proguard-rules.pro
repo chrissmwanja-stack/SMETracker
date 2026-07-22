@@ -42,7 +42,7 @@
 # @DocumentId and any Firestore @PropertyName annotations must survive so the
 # POJO mapper can find them via reflection at runtime.
 -keepattributes *Annotation*
--keep class com.google.firebase.firestore.** { *; }
+
 -keepclassmembers class * {
     @com.google.firebase.firestore.PropertyName <fields>;
 }

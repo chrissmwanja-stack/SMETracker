@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -15,7 +17,7 @@ plugins {
 // and the release build type below simply has no signingConfig, matching
 // the existing CI setup which only builds/lints debug.
 val keystorePropertiesFile = file("keystore.properties")
-val releaseSigningProps = java.util.Properties().apply {
+val releaseSigningProps = Properties().apply {
     if (keystorePropertiesFile.exists()) {
         keystorePropertiesFile.inputStream().use { load(it) }
     }
