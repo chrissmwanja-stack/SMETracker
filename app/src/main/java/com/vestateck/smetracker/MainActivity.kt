@@ -32,6 +32,7 @@ import com.vestateck.smetracker.data.remote.auth.BusinessRepository
 import com.vestateck.smetracker.data.remote.model.MemberRole
 import com.vestateck.smetracker.data.remote.auth.SessionManager
 import com.vestateck.smetracker.data.remote.sync.SyncEngine
+import com.vestateck.smetracker.data.remote.sync.SyncWorker
 import com.vestateck.smetracker.navigation.Screen
 import com.vestateck.smetracker.repository.SMERepository
 import com.vestateck.smetracker.screens.*
@@ -124,6 +125,7 @@ class MainActivity : ComponentActivity() {
                                 // already attached, so this is safe to call on every
                                 // login, including re-login after sign-out.
                                 syncEngine.start()
+                                SyncWorker.schedulePeriodicSync(applicationContext)
                                 requestNotificationPermissionIfOwner(role)
                             }
                         )

@@ -10,6 +10,14 @@ data class RowIssue(val rowNumber: Int, val message: String)
 data class BulkInventoryParseResult(
     val validRows: List<BulkInventoryRow>,
     val issues: List<RowIssue>,
+    // Two rows in the SAME file sharing a name — usually a copy-paste slip
+    // (e.g. the same row pasted twice), occasionally intentional (same
+    // display name, different variant). Doesn't block either row from
+    // importing, just flags it for a second look before confirming.
+    // Cross-referencing against EXISTING inventory (not just within this
+    // file) is a separate concern the screen handles itself, since that
+    // needs the live inventory list rather than anything parse() knows.
+    val duplicateWarnings: List<RowIssue> = emptyList(),
     // Set only when the header row itself is unusable (a required column is
     // missing entirely) — in that case validRows/issues are both empty,
     // since there's nothing sensible to report per-row.
@@ -40,7 +48,7 @@ object InventoryCsvImporter {
     fun parse(csvText: String): BulkInventoryParseResult {
         val rows = CsvParser.parse(csvText)
         if (rows.isEmpty()) {
-            return BulkInventoryParseResult(emptyList(), emptyList(), "That file is empty.")
+            return BulkInventoryParseResult(emptyList(), emptyList(), headerError = "That file is empty.")
         }
 
         val header = rows.first().map { it.trim().lowercase() }
@@ -54,12 +62,16 @@ object InventoryCsvImporter {
             return BulkInventoryParseResult(
                 emptyList(),
                 emptyList(),
-                "Missing required column(s): $niceNames. Check the header row matches the template."
+                headerError = "Missing required column(s): $niceNames. Check the header row matches the template."
             )
         }
 
         val validRows = mutableListOf<BulkInventoryRow>()
         val issues = mutableListOf<RowIssue>()
+        val duplicateWarnings = mutableListOf<RowIssue>()
+        // Maps a lowercased/trimmed name to the row number it first appeared
+        // at, so a later repeat can say exactly which earlier row it matches.
+        val firstSeenAtRow = mutableMapOf<String, Int>()
 
         rows.drop(1).forEachIndexed { idx, cells ->
             // +1 for the header row, +1 to make it 1-based for display.
@@ -101,6 +113,13 @@ object InventoryCsvImporter {
                 return@forEachIndexed
             }
 
+            val nameKey = name.lowercase()
+            firstSeenAtRow[nameKey]?.let { firstRow ->
+                duplicateWarnings.add(
+                    RowIssue(rowNumber, "\"$name\" also appears on row $firstRow — check for a copy-paste slip")
+                )
+            } ?: run { firstSeenAtRow[nameKey] = rowNumber }
+
             validRows.add(
                 BulkInventoryRow(
                     name = name,
@@ -113,6 +132,6 @@ object InventoryCsvImporter {
             )
         }
 
-        return BulkInventoryParseResult(validRows, issues)
+        return BulkInventoryParseResult(validRows, issues, duplicateWarnings)
     }
 }
