@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
+import com.vestateck.smetracker.navigation.Screen
 import com.vestateck.smetracker.data.entities.InventoryItem
 import com.vestateck.smetracker.utils.IdGenerator
 import com.vestateck.smetracker.utils.ImageUtils
@@ -54,6 +55,18 @@ fun InventoryScreen(viewModel: SMEViewModel, navController: NavController, isOwn
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    // Bulk CSV import — sits alongside the FAB's single-item
+                    // quick add rather than replacing it (see
+                    // BulkAddInventoryScreen / InventoryCsvImporter).
+                    IconButton(onClick = { navController.navigate(Screen.BulkAddInventory.route) }) {
+                        Icon(
+                            Icons.Default.UploadFile,
+                            contentDescription = "Bulk Import from CSV",
+                            tint = androidx.compose.ui.graphics.Color.White
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

@@ -1,3 +1,4 @@
+// MainActivity.kt
 package com.vestateck.smetracker
 
 import android.Manifest
@@ -28,10 +29,9 @@ import com.vestateck.smetracker.data.database.SMEDatabase
 import com.vestateck.smetracker.data.remote.auth.AuthRepository
 import com.vestateck.smetracker.data.remote.auth.AuthViewModel
 import com.vestateck.smetracker.data.remote.auth.BusinessRepository
-import com.vestateck.smetracker.data.remote.auth.SessionManager
 import com.vestateck.smetracker.data.remote.model.MemberRole
+import com.vestateck.smetracker.data.remote.auth.SessionManager
 import com.vestateck.smetracker.data.remote.sync.SyncEngine
-import com.vestateck.smetracker.data.remote.sync.SyncWorker
 import com.vestateck.smetracker.navigation.Screen
 import com.vestateck.smetracker.repository.SMERepository
 import com.vestateck.smetracker.screens.*
@@ -49,9 +49,18 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     private val database by lazy { SMEDatabase.getDatabase(this) }
 
+    // Registered eagerly (not `by lazy`) since ActivityResultLauncher must be
+    // registered before the Activity reaches STARTED - registering it lazily
+    // on first use from inside onEnterApp (called after setContent, i.e.
+    // after STARTED) would throw. The callback itself is a no-op: whether the
+    // owner grants this or not, the in-app badge on DashboardScreen still
+    // works either way, this permission only gates the system notification.
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    // Owner-only, matches ReconciliationNotifier's scope. No-ops below API 33
+    // (permission didn't exist yet, notifications just worked) and if
+    // already granted.
     private fun requestNotificationPermissionIfOwner(role: MemberRole) {
         if (role != MemberRole.OWNER) return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
@@ -63,6 +72,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Phase 2 auth dependencies - manual DI, matching the rest of the app.
     private val authRepository by lazy { AuthRepository() }
     private val sessionManager by lazy { SessionManager(applicationContext) }
     private val businessRepository by lazy { BusinessRepository() }
@@ -70,7 +80,17 @@ class MainActivity : ComponentActivity() {
         AuthViewModelFactory(authRepository, sessionManager)
     }
 
+    // Phase 3 sync - Customer-only proof for now (see SyncEngine's class doc).
+    // Scoped to lifecycleScope: cancelled automatically on Activity destroy,
+    // matching the rest of this app's "no long-lived process-level DI" pattern.
+    // start() is safe to call multiple times (no-ops if already listening) and
+    // internally waits for sessionManager.sessionState to report a business
+    // before attaching anything, so it's fine to construct this eagerly.
     private val syncEngine by lazy { SyncEngine(database.smeDao(), database.inventoryDao(), sessionManager, lifecycleScope, applicationContext) }
+
+    // Local-only receipt-number sequence for provisionalReceiptNumber - see
+    // ReceiptNumberGenerator's class doc. SharedPreferences-backed, so this
+    // only needs applicationContext, same as sessionManager above.
     private val receiptNumberGenerator by lazy { ReceiptNumberGenerator(applicationContext) }
 
     private val viewModelFactory by lazy {
@@ -85,6 +105,7 @@ class MainActivity : ComponentActivity() {
             SMETrackerTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
 
+                    // Null until AuthNavGate hands off a resolved business + role.
                     var entered by remember {
                         mutableStateOf<Pair<String, MemberRole>?>(null)
                     }
@@ -99,8 +120,10 @@ class MainActivity : ComponentActivity() {
                             businessRepository = businessRepository,
                             onEnterApp = { businessId, role ->
                                 entered = businessId to role
+                                // Idempotent: SyncEngine.start() no-ops if a listener is
+                                // already attached, so this is safe to call on every
+                                // login, including re-login after sign-out.
                                 syncEngine.start()
-                                SyncWorker.schedulePeriodicSync(applicationContext)
                                 requestNotificationPermissionIfOwner(role)
                             }
                         )
@@ -114,8 +137,32 @@ class MainActivity : ComponentActivity() {
                                     viewModel = viewModel,
                                     navController = navController,
                                     onSignOut = {
+                                        // AuthNavGate re-collects sessionManager.sessionState
+                                        // fresh the instant `entered` goes null. clearSession()
+                                        // is an async DataStore write (real disk I/O) - flipping
+                                        // `entered` before it lands meant the first read AuthNavGate
+                                        // did could still see the old logged-in session and bounce
+                                        // straight back into the app, so sign-out silently no-op'd
+                                        // on the first tap and only "worked" the second time, once
+                                        // the first attempt's write had actually landed. Waiting for
+                                        // signOut()'s completion callback closes that race.
                                         authViewModel.signOut {
                                             syncEngine.stop()
+                                            // Local Room storage has no businessId scoping on any
+                                            // entity (see SMEDatabase.clearSyncedDataSuspending() doc) -
+                                            // without clearing it here, the next sign-in (same device,
+                                            // any business, including a freshly created one) starts
+                                            // from whatever the previous business left behind. Only the
+                                            // already-synced cache is cleared - any row still
+                                            // pendingSync = true (recorded offline, not yet pushed) is
+                                            // left in place and syncs automatically on next login, so
+                                            // signing out mid-offline-work can't silently lose data.
+                                            // Awaited - not fire-and-forget - and `entered` only flips
+                                            // to null once the clear finishes, so AuthNavGate can't
+                                            // route into a new sign-in/business-create flow, and
+                                            // SyncEngine can't start re-populating tables for the next
+                                            // business, until the previous business's synced data is
+                                            // actually gone.
                                             lifecycleScope.launch(Dispatchers.IO) {
                                                 database.clearSyncedDataSuspending()
                                                 withContext(Dispatchers.Main) {
@@ -133,6 +180,7 @@ class MainActivity : ComponentActivity() {
                             composable(Screen.AddDebt.route) { AddDebtScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.AddCustomer.route) { AddCustomerScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.AddInventory.route) { AddInventoryScreen(viewModel = viewModel, navController = navController, isOwner = currentEntry.second == MemberRole.OWNER) }
+                            composable(Screen.BulkAddInventory.route) { BulkAddInventoryScreen(viewModel = viewModel, navController = navController, isOwner = currentEntry.second == MemberRole.OWNER) }
                             composable(Screen.Customers.route) { CustomersScreen(viewModel = viewModel, navController = navController) }
                             composable(Screen.Inventory.route) { InventoryScreen(viewModel = viewModel, navController = navController, isOwner = currentEntry.second == MemberRole.OWNER) }
                             composable(Screen.Reports.route) {
