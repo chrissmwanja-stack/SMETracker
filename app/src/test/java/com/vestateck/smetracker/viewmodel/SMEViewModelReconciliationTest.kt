@@ -254,6 +254,7 @@ class SMEViewModelReconciliationTest {
         val sale = Sale(
             id = "sale-del-1",
             customerName = "Test Soft Delete",
+            description = "Test Description",
             amount = 12_000.0,
             isDeleted = false,
             pendingSync = false

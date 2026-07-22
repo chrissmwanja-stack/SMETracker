@@ -32,11 +32,11 @@ class FakeSMEDao : SMEDao {
     val tasksFlow = MutableStateFlow<List<Task>>(emptyList())
 
     // -- Sales -----------------------------------------------------
-    override fun getAllSales(): Flow<List<Sale>> = salesFlow
+    override fun getAllSales(): Flow<List<Sale>> = salesFlow.map { list -> list.filter { !it.isDeleted } }
     override suspend fun getSaleById(saleId: String): Sale? = salesFlow.value.find { it.id == saleId }
-    override fun getTotalRevenue(): Flow<Double?> = salesFlow.map { list -> list.sumOf { it.amount } }
+    override fun getTotalRevenue(): Flow<Double?> = salesFlow.map { list -> list.filter { !it.isDeleted }.sumOf { it.amount } }
     override fun getTodayRevenue(startOfDay: Long): Flow<Double?> =
-        salesFlow.map { list -> list.filter { it.date >= startOfDay }.sumOf { it.amount } }
+        salesFlow.map { list -> list.filter { !it.isDeleted && it.date >= startOfDay }.sumOf { it.amount } }
 
     override suspend fun insertSale(sale: Sale): Long {
         salesFlow.update { list -> list.filterNot { it.id == sale.id } + sale }
@@ -53,12 +53,18 @@ class FakeSMEDao : SMEDao {
         salesFlow.update { list -> list.filterNot { it.id == sale.id } }
     }
 
+    override suspend fun markSaleAsDeleted(saleId: String) {
+        salesFlow.update { list ->
+            list.map { if (it.id == saleId) it.copy(isDeleted = true, pendingSync = true) else it }
+        }
+    }
+
     // -- Reconciliation (Sale) -------------------------------------
     override fun getUnreconciledSales(): Flow<List<Sale>> =
-        salesFlow.map { list -> list.filterNot { it.financialsReconciled } }
+        salesFlow.map { list -> list.filter { !it.isDeleted && !it.financialsReconciled } }
 
     override fun getUnreconciledSalesCount(): Flow<Long> =
-        salesFlow.map { list -> list.count { !it.financialsReconciled }.toLong() }
+        salesFlow.map { list -> list.count { !it.isDeleted && !it.financialsReconciled }.toLong() }
 
     override suspend fun reconcileSaleFinancials(saleId: String, costPriceSnapshot: Double, profit: Double) {
         salesFlow.update { list ->
@@ -90,9 +96,9 @@ class FakeSMEDao : SMEDao {
     }
 
     // -- Customers ---------------------------------------------------
-    override fun getAllCustomers(): Flow<List<Customer>> = customersFlow
+    override fun getAllCustomers(): Flow<List<Customer>> = customersFlow.map { list -> list.filter { !it.isDeleted } }
     override fun searchCustomers(query: String): Flow<List<Customer>> =
-        customersFlow.map { list -> list.filter { it.name.contains(query, ignoreCase = true) || it.phone.contains(query) } }
+        customersFlow.map { list -> list.filter { !it.isDeleted && (it.name.contains(query, ignoreCase = true) || it.phone.contains(query)) } }
 
     override suspend fun insertCustomer(customer: Customer): Long {
         customersFlow.update { list -> list.filterNot { it.id == customer.id } + customer }
@@ -107,6 +113,12 @@ class FakeSMEDao : SMEDao {
         customersFlow.update { list -> list.filterNot { it.id == customer.id } }
     }
 
+    override suspend fun markCustomerAsDeleted(customerId: String) {
+        customersFlow.update { list ->
+            list.map { if (it.id == customerId) it.copy(isDeleted = true, pendingSync = true) else it }
+        }
+    }
+
     override suspend fun getPendingSyncCustomers(): List<Customer> = customersFlow.value.filter { it.pendingSync }
     override suspend fun clearCustomerPendingSync(customerId: String) {
         customersFlow.update { list -> list.map { if (it.id == customerId) it.copy(pendingSync = false) else it } }
@@ -117,10 +129,10 @@ class FakeSMEDao : SMEDao {
     }
 
     // -- Debts ---------------------------------------------------------
-    override fun getAllDebts(): Flow<List<Debt>> = debtsFlow
-    override fun getUnpaidDebts(): Flow<List<Debt>> = debtsFlow.map { list -> list.filterNot { it.isPaid } }
+    override fun getAllDebts(): Flow<List<Debt>> = debtsFlow.map { list -> list.filter { !it.isDeleted } }
+    override fun getUnpaidDebts(): Flow<List<Debt>> = debtsFlow.map { list -> list.filter { !it.isDeleted && !it.isPaid } }
     override fun getTotalOutstandingDebt(): Flow<Double?> =
-        debtsFlow.map { list -> list.filterNot { it.isPaid }.sumOf { it.amount } }
+        debtsFlow.map { list -> list.filter { !it.isDeleted && !it.isPaid }.sumOf { it.amount } }
 
     override suspend fun insertDebt(debt: Debt): Long {
         debtsFlow.update { list -> list.filterNot { it.id == debt.id } + debt }
@@ -135,6 +147,12 @@ class FakeSMEDao : SMEDao {
         debtsFlow.update { list -> list.filterNot { it.id == debt.id } }
     }
 
+    override suspend fun markDebtAsDeleted(debtId: String) {
+        debtsFlow.update { list ->
+            list.map { if (it.id == debtId) it.copy(isDeleted = true, pendingSync = true) else it }
+        }
+    }
+
     override suspend fun getPendingSyncDebts(): List<Debt> = debtsFlow.value.filter { it.pendingSync }
     override suspend fun clearDebtPendingSync(debtId: String) {
         debtsFlow.update { list -> list.map { if (it.id == debtId) it.copy(pendingSync = false) else it } }
@@ -145,9 +163,9 @@ class FakeSMEDao : SMEDao {
     }
 
     // -- Expenses --------------------------------------------------
-    override fun getAllExpenses(): Flow<List<Expense>> = expensesFlow
-    override suspend fun getExpenseById(expenseId: String): Expense? = expensesFlow.value.find { it.id == expenseId }
-    override fun getTotalExpenses(): Flow<Double?> = expensesFlow.map { list -> list.sumOf { it.amount } }
+    override fun getAllExpenses(): Flow<List<Expense>> = expensesFlow.map { list -> list.filter { !it.isDeleted } }
+    override suspend fun getExpenseById(expenseId: String): Expense? = expensesFlow.value.find { it.id == expenseId && !it.isDeleted }
+    override fun getTotalExpenses(): Flow<Double?> = expensesFlow.map { list -> list.filter { !it.isDeleted }.sumOf { it.amount } }
 
     override suspend fun insertExpense(expense: Expense): Long {
         expensesFlow.update { list -> list.filterNot { it.id == expense.id } + expense }
@@ -156,6 +174,12 @@ class FakeSMEDao : SMEDao {
 
     override suspend fun deleteExpense(expense: Expense) {
         expensesFlow.update { list -> list.filterNot { it.id == expense.id } }
+    }
+
+    override suspend fun markExpenseAsDeleted(expenseId: String) {
+        expensesFlow.update { list ->
+            list.map { if (it.id == expenseId) it.copy(isDeleted = true, pendingSync = true) else it }
+        }
     }
 
     override suspend fun getPendingSyncExpenses(): List<Expense> = expensesFlow.value.filter { it.pendingSync }
@@ -177,8 +201,8 @@ class FakeSMEDao : SMEDao {
     }
 
     // -- Tasks -----------------------------------------------------
-    override fun getPendingTasks(): Flow<List<Task>> = tasksFlow.map { list -> list.filterNot { it.isCompleted } }
-    override fun getPendingTaskCount(): Flow<Long> = tasksFlow.map { list -> list.count { !it.isCompleted }.toLong() }
+    override fun getPendingTasks(): Flow<List<Task>> = tasksFlow.map { list -> list.filter { !it.isDeleted && !it.isCompleted } }
+    override fun getPendingTaskCount(): Flow<Long> = tasksFlow.map { list -> list.count { !it.isDeleted && !it.isCompleted }.toLong() }
 
     override suspend fun insertTask(task: Task): Long {
         tasksFlow.update { list -> list.filterNot { it.id == task.id } + task }
@@ -193,6 +217,12 @@ class FakeSMEDao : SMEDao {
 
     override suspend fun deleteTask(task: Task) {
         tasksFlow.update { list -> list.filterNot { it.id == task.id } }
+    }
+
+    override suspend fun markTaskAsDeleted(taskId: String) {
+        tasksFlow.update { list ->
+            list.map { if (it.id == taskId) it.copy(isDeleted = true, pendingSync = true) else it }
+        }
     }
 
     override suspend fun getPendingSyncTasks(): List<Task> = tasksFlow.value.filter { it.pendingSync }

@@ -20,21 +20,31 @@ class FakeInventoryDao : InventoryDao {
     val itemsFlow = MutableStateFlow<List<InventoryItem>>(emptyList())
     val adjustmentsFlow = MutableStateFlow<List<StockAdjustment>>(emptyList())
 
-    override fun getAllItems(): Flow<List<InventoryItem>> = itemsFlow.map { it.sortedBy { i -> i.name } }
-    override suspend fun getItemById(itemId: String): InventoryItem? = itemsFlow.value.find { it.id == itemId }
+    override fun getAllItems(): Flow<List<InventoryItem>> =
+        itemsFlow.map { it.filter { i -> !i.isDeleted }.sortedBy { i -> i.name } }
+
+    override suspend fun getItemById(itemId: String): InventoryItem? =
+        itemsFlow.value.find { it.id == itemId && !it.isDeleted }
 
     override fun getLowStockItems(threshold: Int): Flow<List<InventoryItem>> =
-        itemsFlow.map { list -> list.filter { it.quantity <= threshold } }
+        itemsFlow.map { list -> list.filter { !it.isDeleted && it.quantity <= threshold } }
 
     override fun getLowStockCount(threshold: Int): Flow<Long> =
-        itemsFlow.map { list -> list.count { it.quantity <= threshold }.toLong() }
+        itemsFlow.map { list -> list.count { !it.isDeleted && it.quantity <= threshold }.toLong() }
 
-    override fun getTotalItemCount(): Flow<Long> = itemsFlow.map { it.size.toLong() }
+    override fun getTotalItemCount(): Flow<Long> = itemsFlow.map { it.count { i -> !i.isDeleted }.toLong() }
     override fun getTotalStockValue(): Flow<Double> =
-        itemsFlow.map { list -> list.sumOf { it.quantity * it.costPrice } }
+        itemsFlow.map { list -> list.filter { !it.isDeleted }.sumOf { it.quantity * it.costPrice } }
 
     override suspend fun insert(item: InventoryItem) {
         itemsFlow.update { list -> list.filterNot { it.id == item.id } + item }
+    }
+
+    override suspend fun insertAll(items: List<InventoryItem>) {
+        itemsFlow.update { list ->
+            val newIds = items.map { it.id }.toSet()
+            list.filterNot { it.id in newIds } + items
+        }
     }
 
     override suspend fun update(item: InventoryItem) {
@@ -43,6 +53,15 @@ class FakeInventoryDao : InventoryDao {
 
     override suspend fun delete(item: InventoryItem) {
         itemsFlow.update { list -> list.filterNot { it.id == item.id } }
+    }
+
+    override suspend fun markItemAsDeleted(itemId: String) {
+        itemsFlow.update { list ->
+            list.map {
+                if (it.id == itemId) it.copy(isDeleted = true, pendingSync = true)
+                else it
+            }
+        }
     }
 
     override suspend fun adjustStock(itemId: String, amount: Int, timestamp: Long) {
@@ -81,10 +100,10 @@ class FakeInventoryDao : InventoryDao {
 
     // -- Reconciliation (InventoryItem) --------------------------------
     override fun getUnreconciledItems(): Flow<List<InventoryItem>> =
-        itemsFlow.map { list -> list.filterNot { it.costReconciled } }
+        itemsFlow.map { list -> list.filter { !it.isDeleted && !it.costReconciled } }
 
     override fun getUnreconciledItemsCount(): Flow<Long> =
-        itemsFlow.map { list -> list.count { !it.costReconciled }.toLong() }
+        itemsFlow.map { list -> list.count { !it.isDeleted && !it.costReconciled }.toLong() }
 
     override suspend fun reconcileItemCost(itemId: String, costPrice: Double) {
         itemsFlow.update { list ->
