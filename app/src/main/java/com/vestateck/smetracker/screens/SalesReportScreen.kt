@@ -9,16 +9,26 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.vestateck.smetracker.ui.components.ReportRow
+import com.vestateck.smetracker.screens.components.ReportPdfExportActions
+import com.vestateck.smetracker.screens.components.ReportRow
+import com.vestateck.smetracker.screens.components.rememberReportPdfExportState
 import com.vestateck.smetracker.utils.CurrencyUtils
+import com.vestateck.smetracker.utils.ReportPdfMappers
 import com.vestateck.smetracker.viewmodel.SMEViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SalesReportScreen(viewModel: SMEViewModel, navController: NavController, isOwner: Boolean = false) {
     val uiState by viewModel.uiState.collectAsState()
+    val sales by viewModel.sales.collectAsState()
+    val business by viewModel.business.collectAsState()
     val analytics = uiState.analytics
     var selectedTab by remember { mutableIntStateOf(0) }
+
+    val pdfExport = rememberReportPdfExportState()
+    val pdfData = remember(business, analytics, sales, isOwner) {
+        ReportPdfMappers.salesReport(business, analytics, sales, isOwner)
+    }
 
     Scaffold(
         topBar = {
@@ -28,6 +38,9 @@ fun SalesReportScreen(viewModel: SMEViewModel, navController: NavController, isO
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
+                },
+                actions = {
+                    ReportPdfExportActions(pdfExport, pdfData, "sales_report")
                 }
             )
         }
@@ -38,6 +51,15 @@ fun SalesReportScreen(viewModel: SMEViewModel, navController: NavController, isO
                 .padding(padding)
                 .padding(16.dp)
         ) {
+            pdfExport.statusMessage?.let {
+                Text(
+                    it,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
             TabRow(selectedTabIndex = selectedTab) {
                 Tab(
                     selected = selectedTab == 0,
