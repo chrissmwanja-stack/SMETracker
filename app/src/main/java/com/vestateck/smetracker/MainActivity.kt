@@ -190,6 +190,11 @@ class MainActivity : ComponentActivity() {
                                     ReportsScreen(navController = navController)
                                 }
                             }
+                            composable(Screen.SalesReceipts.route) {
+                                OwnerOnlyGate(isOwner = currentEntry.second == MemberRole.OWNER, navController = navController) {
+                                    SalesReceiptsListScreen(viewModel = viewModel, navController = navController)
+                                }
+                            }
                             composable(Screen.SalesReport.route) {
                                 OwnerOnlyGate(isOwner = currentEntry.second == MemberRole.OWNER, navController = navController) {
                                     SalesReportScreen(viewModel = viewModel, navController = navController, isOwner = currentEntry.second == MemberRole.OWNER)

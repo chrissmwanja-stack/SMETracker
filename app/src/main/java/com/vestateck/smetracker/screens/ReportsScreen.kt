@@ -3,6 +3,7 @@ package com.vestateck.smetracker.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -20,6 +21,15 @@ fun ReportsScreen(navController: NavController) {
         topBar = {
             TopAppBar(
                 title = { Text("Reports") },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
@@ -34,6 +44,12 @@ fun ReportsScreen(navController: NavController) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            ReportCard(
+                title = "Sales Receipts",
+                subtitle = "Browse and reprint individual receipts",
+                icon = Icons.Default.Receipt,
+                onClick = { navController.navigate(Screen.SalesReceipts.route) }
+            )
             ReportCard(
                 title = "Sales Report",
                 subtitle = "Daily, weekly, monthly sales",

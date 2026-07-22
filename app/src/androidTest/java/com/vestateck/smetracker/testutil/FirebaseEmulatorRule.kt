@@ -25,13 +25,12 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+private const val TAG = "FirebaseEmulatorRule"
+
 /**
  * Points [FirebaseAuth] and [FirebaseFirestore] at the Local Emulator Suite
  * (see firebase.json: auth 9099, firestore 8080) and gives tests a way to
  * drive a real phone-auth sign-in against the Auth emulator.
- *
- * "10.0.2.2" is the special alias the Android *emulator* (AVD) NATs to the
- * host machine's loopback.
  */
 class FirebaseEmulatorRule(
     private val emulatorHost: String = "10.0.2.2",
@@ -49,18 +48,34 @@ class FirebaseEmulatorRule(
 
     override fun starting(description: Description) {
         super.starting(description)
+        Log.d("FirebaseEmulatorRule", "Starting test: ${description.methodName}")
 
         if (emulatorsConfigured.compareAndSet(false, true)) {
+            Log.d("FirebaseEmulatorRule", "Configuring emulators to use $emulatorHost")
             auth.useEmulator(emulatorHost, authPort)
             auth.firebaseAuthSettings.setAppVerificationDisabledForTesting(true)
             firestore.useEmulator(emulatorHost, firestorePort)
+        }
+
+        // Fail fast if emulator is unreachable to avoid confusing timeouts later.
+        try {
+            blockingHttp("GET", authEmulatorUrl(""))
+            Log.d("FirebaseEmulatorRule", "Emulator is reachable at $emulatorHost:$authPort")
+        } catch (e: Exception) {
+            val msg = "Firebase Auth emulator is NOT reachable at $emulatorHost:$authPort. " +
+                    "1. Run 'firebase emulators:start' on your host machine. " +
+                    "2. Ensure firebase.json has \"host\": \"0.0.0.0\" for emulators. " +
+                    "3. Check your firewall settings. " +
+                    "Error: ${e.message}"
+            Log.e("FirebaseEmulatorRule", msg)
+            throw IllegalStateException(msg, e)
         }
 
         try {
             blockingHttp("DELETE", authEmulatorUrl("accounts"))
             blockingHttp("DELETE", firestoreEmulatorUrl("documents"))
         } catch (e: Exception) {
-            Log.w("FirebaseEmulatorRule", "Cleanup failed (emulator might not be reachable): ${e.message}")
+            Log.w("FirebaseEmulatorRule", "Cleanup failed: ${e.message}")
         }
         auth.signOut()
     }
@@ -68,6 +83,7 @@ class FirebaseEmulatorRule(
     override fun finished(description: Description) {
         auth.signOut()
         super.finished(description)
+        Log.d("FirebaseEmulatorRule", "Finished test: ${description.methodName}")
     }
 
     /**
@@ -78,16 +94,17 @@ class FirebaseEmulatorRule(
         activity: Activity,
         timeoutSeconds: Long = 30L
     ): FirebaseUser = withContext(Dispatchers.IO) {
-        // withContext(Dispatchers.IO) ensures we use real time for the timeout
-        // even when called from runTest, and prevents blocking the test thread.
+        Log.d("FirebaseEmulatorRule", "signInWithPhoneNumber started for $phoneNumber")
         withTimeout(TimeUnit.SECONDS.toMillis(timeoutSeconds + 10)) {
             val credential = suspendCancellableCoroutine<PhoneAuthCredential> { cont ->
                 val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
                     override fun onVerificationCompleted(credential: PhoneAuthCredential) {
+                        Log.d("FirebaseEmulatorRule", "onVerificationCompleted: $credential")
                         if (cont.isActive) cont.resume(credential)
                     }
 
                     override fun onVerificationFailed(e: com.google.firebase.FirebaseException) {
+                        Log.e("FirebaseEmulatorRule", "onVerificationFailed", e)
                         if (cont.isActive) cont.resumeWithException(e)
                     }
 
@@ -95,14 +112,17 @@ class FirebaseEmulatorRule(
                         verificationId: String,
                         token: PhoneAuthProvider.ForceResendingToken
                     ) {
+                        Log.d("FirebaseEmulatorRule", "onCodeSent: $verificationId")
                         val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
                         executor.execute {
                             try {
                                 val code = fetchVerificationCode(phoneNumber)
+                                Log.d("FirebaseEmulatorRule", "Fetched code: $code")
                                 if (cont.isActive) {
                                     cont.resume(PhoneAuthProvider.getCredential(verificationId, code))
                                 }
                             } catch (e: Exception) {
+                                Log.e("FirebaseEmulatorRule", "fetchVerificationCode failed", e)
                                 if (cont.isActive) cont.resumeWithException(e)
                             } finally {
                                 executor.shutdown()
@@ -118,29 +138,37 @@ class FirebaseEmulatorRule(
                     .setCallbacks(callbacks)
                     .build()
 
+                Log.d("FirebaseEmulatorRule", "Calling verifyPhoneNumber...")
                 activity.runOnUiThread {
                     PhoneAuthProvider.verifyPhoneNumber(options)
                 }
             }
 
-            auth.signInWithCredential(credential).await().user
-                ?: error("signInWithCredential succeeded but returned no user")
+            Log.d("FirebaseEmulatorRule", "Credential received, signing in...")
+            val result = auth.signInWithCredential(credential).await()
+            Log.d("FirebaseEmulatorRule", "signInWithCredential completed: ${result.user?.uid}")
+            result.user ?: error("signInWithCredential succeeded but returned no user")
         }
     }
 
     private fun fetchVerificationCode(phoneNumber: String, retries: Int = 10): String {
+        Log.d("FirebaseEmulatorRule", "Polling for verification code for $phoneNumber...")
         repeat(retries) { attempt ->
-            val body = blockingHttp("GET", authEmulatorUrl("verificationCodes"))
-            val codes = JSONObject(body).optJSONArray("verificationCodes")
-            if (codes != null) {
-                for (i in codes.length() - 1 downTo 0) {
-                    val entry = codes.getJSONObject(i)
-                    if (entry.optString("phoneNumber") == phoneNumber) {
-                        return entry.optString("code", entry.optString("sessionInfo"))
+            try {
+                val body = blockingHttp("GET", authEmulatorUrl("verificationCodes"))
+                val codes = JSONObject(body).optJSONArray("verificationCodes")
+                if (codes != null) {
+                    for (i in codes.length() - 1 downTo 0) {
+                        val entry = codes.getJSONObject(i)
+                        if (entry.optString("phoneNumber") == phoneNumber) {
+                            return entry.optString("code", entry.optString("sessionInfo"))
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                Log.w("FirebaseEmulatorRule", "Poll attempt ${attempt + 1} failed: ${e.message}")
             }
-            if (attempt < retries - 1) Thread.sleep(300)
+            if (attempt < retries - 1) Thread.sleep(500)
         }
         error("No verification code recorded for $phoneNumber after $retries attempts")
     }

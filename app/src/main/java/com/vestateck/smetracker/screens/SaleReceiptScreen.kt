@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -29,6 +30,7 @@ import androidx.navigation.NavController
 import com.vestateck.smetracker.utils.CurrencyUtils
 import com.vestateck.smetracker.utils.ReceiptData
 import com.vestateck.smetracker.utils.ReceiptRenderer
+import com.vestateck.smetracker.utils.PrintUtils
 import com.vestateck.smetracker.viewmodel.SMEViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -108,6 +110,16 @@ fun SaleReceiptScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Done")
+                    }
+                },
+                actions = {
+                    receiptData?.let { data ->
+                        IconButton(
+                            onClick = { printReceipt(context, scope, data, onWorking = { isWorking = it }) },
+                            enabled = !isWorking
+                        ) {
+                            Icon(Icons.Filled.Print, contentDescription = "Print receipt", tint = Color.White)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -310,6 +322,22 @@ private fun shareReceiptPdf(
             ReceiptRenderer.buildPdfFile(context, data, receiptFileName(data))
         }
         ReceiptRenderer.shareFile(context, file, "application/pdf")
+        onWorking(false)
+    }
+}
+
+private fun printReceipt(
+    context: Context,
+    scope: CoroutineScope,
+    data: ReceiptData,
+    onWorking: (Boolean) -> Unit
+) {
+    scope.launch {
+        onWorking(true)
+        val file = withContext(Dispatchers.IO) {
+            ReceiptRenderer.buildPdfFile(context, data, receiptFileName(data))
+        }
+        PrintUtils.printPdf(context, file, "Receipt ${data.receiptNumber.ifBlank { "Draft" }}")
         onWorking(false)
     }
 }

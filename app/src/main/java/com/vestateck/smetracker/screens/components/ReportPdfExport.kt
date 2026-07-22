@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -24,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.vestateck.smetracker.utils.FileShareUtils
+import com.vestateck.smetracker.utils.PrintUtils
 import com.vestateck.smetracker.utils.ReportPdfData
 import com.vestateck.smetracker.utils.ReportPdfRenderer
 import kotlinx.coroutines.Dispatchers
@@ -41,7 +43,8 @@ class ReportPdfExportState internal constructor(
     val isWorking: Boolean,
     val statusMessage: String?,
     val share: (ReportPdfData, String) -> Unit,
-    val save: (ReportPdfData, String) -> Unit
+    val save: (ReportPdfData, String) -> Unit,
+    val print: (ReportPdfData, String) -> Unit
 )
 
 @Composable
@@ -101,6 +104,14 @@ fun rememberReportPdfExportState(): ReportPdfExportState {
             } else {
                 doSave(data, fileName)
             }
+        },
+        print = { data, fileName ->
+            scope.launch {
+                isWorking = true
+                val file = withContext(Dispatchers.IO) { ReportPdfRenderer.buildPdfFile(context, data, fileName) }
+                PrintUtils.printPdf(context, file, data.reportTitle)
+                isWorking = false
+            }
         }
     )
 }
@@ -115,6 +126,9 @@ fun ReportPdfExportActions(
     if (export.isWorking) {
         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
         return
+    }
+    IconButton(onClick = { data?.let { export.print(it, fileName) } }, enabled = data != null) {
+        Icon(Icons.Filled.Print, contentDescription = "Print report")
     }
     IconButton(onClick = { data?.let { export.share(it, fileName) } }, enabled = data != null) {
         Icon(Icons.Filled.PictureAsPdf, contentDescription = "Share report as PDF")

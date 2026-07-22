@@ -28,4 +28,5 @@ sealed class Screen(val route: String) {
         fun createRoute(saleIds: List<String>) = "sale_receipt/${saleIds.joinToString(",")}"
     }
     object Reconciliation : Screen("reconciliation")
+    object SalesReceipts : Screen("sales_receipts")
 }

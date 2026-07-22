@@ -91,6 +91,7 @@ fun OwnerSignUpScreen(
  * simply logs in with OTP on their own device afterward — no code to share,
  * no acceptance step.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddWorkerScreen(
     businessId: String,
@@ -104,73 +105,84 @@ fun AddWorkerScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp)
-    ) {
-        Text("Add a worker", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "They'll log in on their own phone with this number — no code needed.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(20.dp))
-
-        OutlinedTextField(
-            value = workerName,
-            onValueChange = { workerName = it },
-            label = { Text("Worker's name") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(Modifier.height(12.dp))
-        OutlinedTextField(
-            value = workerPhone,
-            onValueChange = { workerPhone = it },
-            label = { Text("Phone number") },
-            placeholder = { Text("+2567XXXXXXXX") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        errorMessage?.let {
-            Spacer(Modifier.height(12.dp))
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        }
-
-        Spacer(Modifier.height(20.dp))
-        Row {
-            OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) {
-                Text("Cancel")
-            }
-            Spacer(Modifier.width(12.dp))
-            Button(
-                onClick = {
-                    isSubmitting = true
-                    errorMessage = null
-                    scope.launch {
-                        val result = businessRepository.addWorker(
-                            businessId = businessId,
-                            workerPhoneE164 = workerPhone.trim(),
-                            workerName = workerName.trim()
-                        )
-                        isSubmitting = false
-                        result.fold(
-                            onSuccess = { onWorkerAdded() },
-                            onFailure = { e -> errorMessage = e.message ?: "Something went wrong" }
-                        )
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Add a worker", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onCancel) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                },
-                enabled = !isSubmitting &&
-                        workerName.isNotBlank() &&
-                        workerPhone.trim().startsWith("+") &&
-                        workerPhone.trim().length >= 10,
-                modifier = Modifier.weight(1f)
-            ) {
-                if (isSubmitting) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                } else {
-                    Text("Add worker")
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp)
+        ) {
+            Text(
+                "They'll log in on their own phone with this number — no code needed.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(20.dp))
+
+            OutlinedTextField(
+                value = workerName,
+                onValueChange = { workerName = it },
+                label = { Text("Worker's name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = workerPhone,
+                onValueChange = { workerPhone = it },
+                label = { Text("Phone number") },
+                placeholder = { Text("+2567XXXXXXXX") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            errorMessage?.let {
+                Spacer(Modifier.height(12.dp))
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Row {
+                OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) {
+                    Text("Cancel")
+                }
+                Spacer(Modifier.width(12.dp))
+                Button(
+                    onClick = {
+                        isSubmitting = true
+                        errorMessage = null
+                        scope.launch {
+                            val result = businessRepository.addWorker(
+                                businessId = businessId,
+                                workerPhoneE164 = workerPhone.trim(),
+                                workerName = workerName.trim()
+                            )
+                            isSubmitting = false
+                            result.fold(
+                                onSuccess = { onWorkerAdded() },
+                                onFailure = { e -> errorMessage = e.message ?: "Something went wrong" }
+                            )
+                        }
+                    },
+                    enabled = !isSubmitting &&
+                            workerName.isNotBlank() &&
+                            workerPhone.trim().startsWith("+") &&
+                            workerPhone.trim().length >= 10,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (isSubmitting) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Add worker")
+                    }
                 }
             }
         }
