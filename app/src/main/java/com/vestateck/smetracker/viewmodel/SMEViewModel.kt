@@ -90,9 +90,12 @@ class SMEViewModel @Inject constructor(
     val unreconciledInventoryItems: StateFlow<List<InventoryItem>> = repository.unreconciledInventoryItems
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val oversoldItems: StateFlow<List<InventoryItem>> = repository.oversoldItems
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val unreconciledCount: StateFlow<Int> = combine(
-        repository.unreconciledSalesCount, repository.unreconciledInventoryCount
-    ) { sales, items -> (sales + items).toInt() }
+        repository.unreconciledSalesCount, repository.unreconciledInventoryCount, repository.oversoldItemsCount
+    ) { sales, items, oversold -> (sales + items + oversold).toInt() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     // Full business record (name/phone/address) for the dashboard header and
@@ -198,9 +201,9 @@ class SMEViewModel @Inject constructor(
             // default for a worker - that's exactly the case that needs an
             // owner's review. An owner creating the item already entered a
             // real cost, so it's reconciled immediately.
-            repository.insertInventoryItem(
-                item.copy(id = IdGenerator.newId(), recordedBy = myPhone, costReconciled = isOwner)
-            )
+            val newItem = item.copy(id = IdGenerator.newId(), recordedBy = myPhone, costReconciled = isOwner)
+            repository.insertInventoryItem(newItem)
+            repository.logInitialStock(newItem.id, newItem.quantity, myPhone)
         } else {
             // Editing an existing item always goes through the owner-only
             // cost field when isOwner (see InventoryItemDialog) - if this
@@ -226,20 +229,20 @@ class SMEViewModel @Inject constructor(
         imagePendingUpload: Boolean = false
     ) = viewModelScope.launch {
         val (myPhone, isOwner) = currentSession()
-        repository.insertInventoryItem(
-            InventoryItem(
-                name = name,
-                quantity = quantity,
-                sellingPrice = sellingPrice,
-                category = category,
-                costPrice = costPrice,
-                reorderLevel = reorderLevel,
-                recordedBy = myPhone,
-                costReconciled = isOwner,
-                localImagePath = localImagePath,
-                imagePendingUpload = imagePendingUpload
-            )
+        val newItem = InventoryItem(
+            name = name,
+            quantity = quantity,
+            sellingPrice = sellingPrice,
+            category = category,
+            costPrice = costPrice,
+            reorderLevel = reorderLevel,
+            recordedBy = myPhone,
+            costReconciled = isOwner,
+            localImagePath = localImagePath,
+            imagePendingUpload = imagePendingUpload
         )
+        repository.insertInventoryItem(newItem)
+        repository.logInitialStock(newItem.id, newItem.quantity, myPhone)
         syncEngine?.requestPush()
     }
 
@@ -271,6 +274,7 @@ class SMEViewModel @Inject constructor(
             )
         }
         repository.insertInventoryItems(items)
+        items.forEach { repository.logInitialStock(it.id, it.quantity, myPhone) }
         syncEngine?.requestPush()
     }
 

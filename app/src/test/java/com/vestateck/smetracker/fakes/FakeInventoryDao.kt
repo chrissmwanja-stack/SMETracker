@@ -10,10 +10,10 @@ import kotlinx.coroutines.flow.update
 
 /**
  * Hand-rolled in-memory fake of InventoryDao - same rationale as
- * FakeSMEDao. applyStockAdjustment is reimplemented directly (rather than
- * inherited as a default `@Transaction` method) since Room generates that
- * implementation at compile time; a plain Kotlin override here just calls
- * adjustStock + insertStockAdjustment the same way.
+ * FakeSMEDao. applyStockAdjustment and applyRemoteStockAdjustment are
+ * reimplemented directly (rather than inherited as default `@Transaction`
+ * methods) since Room generates that implementation at compile time; a
+ * plain Kotlin override here just calls the same underlying steps.
  */
 class FakeInventoryDao : InventoryDao {
 
@@ -73,6 +73,15 @@ class FakeInventoryDao : InventoryDao {
         }
     }
 
+    override suspend fun adjustStockFromRemote(itemId: String, amount: Int, timestamp: Long) {
+        itemsFlow.update { list ->
+            list.map {
+                if (it.id == itemId) it.copy(quantity = it.quantity + amount, updatedAt = timestamp)
+                else it
+            }
+        }
+    }
+
     override suspend fun insertStockAdjustment(adjustment: StockAdjustment) {
         adjustmentsFlow.update { list -> list + adjustment }
     }
@@ -97,6 +106,27 @@ class FakeInventoryDao : InventoryDao {
     override suspend fun insertAdjustmentFromRemote(adjustment: StockAdjustment) {
         adjustmentsFlow.update { list -> list.filterNot { it.id == adjustment.id } + adjustment }
     }
+
+    override suspend fun adjustmentExists(id: String): Boolean =
+        adjustmentsFlow.value.any { it.id == id }
+
+    // Reimplemented directly rather than inherited (see class doc) - same
+    // dedupe logic as the real @Transaction default method: a genuinely new
+    // adjustment applies its delta and gets logged; one this fake already
+    // has (this "device" created it, and the fake echoes it back) is a
+    // no-op so the delta isn't counted twice.
+    override suspend fun applyRemoteStockAdjustment(adjustment: StockAdjustment) {
+        if (adjustmentExists(adjustment.id)) return
+        adjustStockFromRemote(adjustment.itemId, adjustment.delta, adjustment.createdAt)
+        insertAdjustmentFromRemote(adjustment)
+    }
+
+    // -- Oversold (InventoryItem) ----------------------------------------
+    override fun getOversoldItems(): Flow<List<InventoryItem>> =
+        itemsFlow.map { list -> list.filter { !it.isDeleted && it.quantity < 0 }.sortedBy { it.quantity } }
+
+    override fun getOversoldItemsCount(): Flow<Long> =
+        itemsFlow.map { list -> list.count { !it.isDeleted && it.quantity < 0 }.toLong() }
 
     // -- Reconciliation (InventoryItem) --------------------------------
     override fun getUnreconciledItems(): Flow<List<InventoryItem>> =

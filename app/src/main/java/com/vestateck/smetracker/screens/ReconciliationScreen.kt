@@ -19,6 +19,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.navigation.NavController
 import com.vestateck.smetracker.data.entities.InventoryItem
 import com.vestateck.smetracker.data.entities.Sale
+import com.vestateck.smetracker.ui.components.RecountStockDialog
 import com.vestateck.smetracker.ui.components.SaleCostReviewDialog
 import com.vestateck.smetracker.utils.CurrencyUtils
 import com.vestateck.smetracker.viewmodel.SMEViewModel
@@ -28,6 +29,7 @@ import com.vestateck.smetracker.viewmodel.SMEViewModel
 fun ReconciliationScreen(viewModel: SMEViewModel, navController: NavController) {
     val unreconciledSales by viewModel.unreconciledSales.collectAsState()
     val unreconciledItems by viewModel.unreconciledInventoryItems.collectAsState()
+    val oversoldItems by viewModel.oversoldItems.collectAsState()
     // Needed so a sale's review dialog can suggest the linked item's current
     // cost price as a starting point (see SaleReconciliationDialog below).
     val inventoryItems by viewModel.inventoryItems.collectAsState()
@@ -70,37 +72,65 @@ fun ReconciliationScreen(viewModel: SMEViewModel, navController: NavController) 
                         }
                     }
                 )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = {
+                        BadgedBox(badge = { if (oversoldItems.isNotEmpty()) Badge { Text(oversoldItems.size.toString()) } }) {
+                            Text("Stock")
+                        }
+                    }
+                )
             }
 
-            if (selectedTab == 0) {
-                if (unreconciledSales.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("All sales reconciled", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
-                    }
-                } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(unreconciledSales, key = { it.id }) { sale ->
-                            val linkedItem = sale.inventoryItemId?.let { id -> inventoryItems.find { it.id == id } }
-                            SaleReconciliationCard(
-                                sale = sale,
-                                linkedItem = linkedItem,
-                                onReconcile = { costPricePerUnit -> viewModel.reconcileSale(sale.id, costPricePerUnit) }
-                            )
+            when (selectedTab) {
+                0 -> {
+                    if (unreconciledSales.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("All sales reconciled", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                        }
+                    } else {
+                        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(unreconciledSales, key = { it.id }) { sale ->
+                                val linkedItem = sale.inventoryItemId?.let { id -> inventoryItems.find { it.id == id } }
+                                SaleReconciliationCard(
+                                    sale = sale,
+                                    linkedItem = linkedItem,
+                                    onReconcile = { costPricePerUnit -> viewModel.reconcileSale(sale.id, costPricePerUnit) }
+                                )
+                            }
                         }
                     }
                 }
-            } else {
-                if (unreconciledItems.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("All inventory reconciled", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                1 -> {
+                    if (unreconciledItems.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("All inventory reconciled", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                        }
+                    } else {
+                        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(unreconciledItems, key = { it.id }) { item ->
+                                InventoryReconciliationCard(
+                                    item = item,
+                                    onReconcile = { costPrice -> viewModel.reconcileInventoryCost(item.id, costPrice) }
+                                )
+                            }
+                        }
                     }
-                } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        items(unreconciledItems, key = { it.id }) { item ->
-                            InventoryReconciliationCard(
-                                item = item,
-                                onReconcile = { costPrice -> viewModel.reconcileInventoryCost(item.id, costPrice) }
-                            )
+                }
+                else -> {
+                    if (oversoldItems.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("No oversold items", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+                        }
+                    } else {
+                        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            items(oversoldItems, key = { it.id }) { item ->
+                                OversoldItemCard(
+                                    item = item,
+                                    onRecount = { newQty, note -> viewModel.recountStock(item.id, newQty, note) }
+                                )
+                            }
                         }
                     }
                 }
@@ -202,6 +232,54 @@ private fun InventoryReconciliationCard(
             onDismiss = { showDialog = false },
             onConfirm = { costPrice ->
                 onReconcile(costPrice)
+                showDialog = false
+            }
+        )
+    }
+}
+
+// Two offline devices can each validly see enough stock and sell against
+// it — combined, more than actually existed. That's not a sync bug (see
+// InventoryDao.applyRemoteStockAdjustment / InventorySync's pull listener,
+// which fixed the actual bug where one device's stock change could
+// silently clobber another's); it's a real business event that needs a
+// human decision, same as any other stock discrepancy. Resolution reuses
+// the same Recount action as InventoryScreen — the owner enters the actual
+// physical count and a reason, same as correcting an everyday miscount.
+@Composable
+private fun OversoldItemCard(
+    item: InventoryItem,
+    onRecount: (newQuantity: Int, note: String) -> Unit
+) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(item.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            if (item.category.isNotBlank()) {
+                Text(item.category, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "On record: ${item.quantity}",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.error
+            )
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = { showDialog = true }, modifier = Modifier.align(Alignment.End)) {
+                Text("Recount")
+            }
+        }
+    }
+
+    if (showDialog) {
+        RecountStockDialog(
+            itemName = item.name,
+            currentQuantity = item.quantity,
+            onDismiss = { showDialog = false },
+            onConfirm = { newQty, note ->
+                onRecount(newQty, note)
                 showDialog = false
             }
         )

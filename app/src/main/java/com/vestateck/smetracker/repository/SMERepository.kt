@@ -34,6 +34,15 @@ class SMERepository(
     suspend fun reconcileItemCost(itemId: String, costPrice: Double) =
         inventoryDao.reconcileItemCost(itemId, costPrice)
 
+    // Items whose quantity has gone negative — a genuine oversell (two
+    // offline devices both validly saw enough stock and sold more than
+    // actually existed combined) surviving correct delta-based merging, not
+    // a sync bug. Surfaced in the Reconciliation screen's "Stock" tab so an
+    // owner can correct it with a Recount, same mechanism as any other
+    // stock discrepancy.
+    val oversoldItems: Flow<List<InventoryItem>> = inventoryDao.getOversoldItems()
+    val oversoldItemsCount: Flow<Long> = inventoryDao.getOversoldItemsCount()
+
     // ── Customers ─────────────────────────────────────────────────
     val allCustomers: Flow<List<Customer>> = smeDao.getAllCustomers()
 
@@ -101,6 +110,27 @@ class SMERepository(
                 delta = -quantity,
                 reason = StockAdjustmentReason.SALE,
                 note = "Sale"
+            )
+        )
+    }
+
+    // Logs the item's starting quantity as its own adjustment at creation
+    // time, rather than only baking it into the InventoryItem row. Deliberately
+    // does NOT go through applyStockAdjustment/adjustStock — this device's own
+    // quantity is already correct (it was set directly on the row at insert) and
+    // adjusting again would double it. This is purely so OTHER devices, which
+    // derive quantity by replaying stock_adjustments from scratch, have an
+    // "Initial stock" entry to replay instead of missing the opening balance
+    // entirely. See InventorySync's pull listener and applyRemoteStockAdjustment.
+    suspend fun logInitialStock(itemId: String, quantity: Int, recordedBy: String) {
+        if (quantity == 0) return
+        inventoryDao.insertStockAdjustment(
+            StockAdjustment(
+                itemId = itemId,
+                delta = quantity,
+                reason = StockAdjustmentReason.INCOMING,
+                note = "Initial stock",
+                recordedBy = recordedBy
             )
         )
     }

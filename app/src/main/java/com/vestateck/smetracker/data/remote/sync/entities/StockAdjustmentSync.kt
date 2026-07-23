@@ -15,8 +15,12 @@ import kotlinx.coroutines.tasks.await
 
 /**
  * No worker/owner split on read — see RemoteStockAdjustment.kt's class doc.
- * This is the audit log behind Incoming Stock / Recount (InventoryScreen).
- * Extracted from SyncEngine.
+ * This is the audit log behind Incoming Stock / Recount (InventoryScreen) —
+ * and, since each adjustment is its own additive Firestore doc rather than
+ * a field on the shared InventoryItem document, it's also what quantity is
+ * actually derived from across devices. See InventoryDao.applyRemoteStockAdjustment
+ * and InventorySync's pull listener (which deliberately stops trusting
+ * RemoteInventoryItem.quantity for this reason). Extracted from SyncEngine.
  *
  * Same FK-ordering caveat as Sale/Debt elsewhere: StockAdjustment.itemId is
  * a foreign key to inventory_items, so if this listener's first batch
@@ -41,7 +45,7 @@ class StockAdjustmentSync(
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         try {
                             val remote = change.document.toObject(RemoteStockAdjustment::class.java)
-                            inventoryDao.insertAdjustmentFromRemote(
+                            inventoryDao.applyRemoteStockAdjustment(
                                 StockAdjustment(
                                     id = remote.id,
                                     itemId = remote.itemId,

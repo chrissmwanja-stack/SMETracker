@@ -30,6 +30,7 @@ import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.vestateck.smetracker.navigation.Screen
 import com.vestateck.smetracker.data.entities.InventoryItem
+import com.vestateck.smetracker.ui.components.RecountStockDialog
 import com.vestateck.smetracker.utils.IdGenerator
 import com.vestateck.smetracker.utils.ImageUtils
 import com.vestateck.smetracker.viewmodel.SMEViewModel
@@ -338,53 +339,6 @@ private fun ReceiveStockDialog(
                 enabled = isValid,
                 onClick = { onConfirm(qtyValue!!, note.ifBlank { null }) }
             ) { Text("Add to Stock") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
-    )
-}
-
-@Composable
-private fun RecountStockDialog(
-    itemName: String,
-    currentQuantity: Int,
-    onDismiss: () -> Unit,
-    onConfirm: (newQuantity: Int, note: String) -> Unit
-) {
-    var newQuantity by remember { mutableStateOf(currentQuantity.toString()) }
-    var note by remember { mutableStateOf("") }
-    val newQtyValue = newQuantity.toIntOrNull()
-    // A reason is required so a recount always leaves a trail explaining the
-    // discrepancy, rather than a bare number with no context.
-    val isValid = newQtyValue != null && newQtyValue >= 0 && note.isNotBlank()
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Recount — $itemName") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Currently on record: $currentQuantity", fontSize = 13.sp, color = androidx.compose.ui.graphics.Color.Gray)
-                OutlinedTextField(
-                    value = newQuantity,
-                    onValueChange = { newQuantity = it },
-                    label = { Text("Actual physical count") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it },
-                    label = { Text("Reason for discrepancy") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = isValid,
-                onClick = { onConfirm(newQtyValue!!, note) }
-            ) { Text("Save Recount") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

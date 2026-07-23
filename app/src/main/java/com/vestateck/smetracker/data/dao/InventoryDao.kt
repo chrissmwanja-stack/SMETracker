@@ -48,6 +48,15 @@ interface InventoryDao {
     @Query("UPDATE inventory_items SET quantity = quantity + :amount, updatedAt = :timestamp, pendingSync = 1 WHERE id = :itemId")
     suspend fun adjustStock(itemId: String, amount: Int, timestamp: Long)
 
+    // Same arithmetic as adjustStock, but for replaying an adjustment that
+    // originated on ANOTHER device (see applyRemoteStockAdjustment below).
+    // Deliberately doesn't set pendingSync — this device isn't the source
+    // of the change, it's just catching its own local quantity cache up to
+    // match what's already synced. Flagging pendingSync here would just
+    // cause an unnecessary echo push of the InventoryItem doc.
+    @Query("UPDATE inventory_items SET quantity = quantity + :amount, updatedAt = :timestamp WHERE id = :itemId")
+    suspend fun adjustStockFromRemote(itemId: String, amount: Int, timestamp: Long)
+
     @Insert
     suspend fun insertStockAdjustment(adjustment: StockAdjustment)
 
@@ -74,8 +83,44 @@ interface InventoryDao {
     @Query("DELETE FROM stock_adjustments WHERE pendingSync = 0")
     suspend fun deleteSyncedAdjustments()
 
+    @Query("SELECT EXISTS(SELECT 1 FROM stock_adjustments WHERE id = :id)")
+    suspend fun adjustmentExists(id: String): Boolean
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAdjustmentFromRemote(adjustment: StockAdjustment)
+
+    // Sync pull entry point for stock_adjustments (see StockAdjustmentSync).
+    // This — not InventoryItem's own quantity field — is what quantity is
+    // actually derived from across devices now: every adjustment (SALE,
+    // INCOMING, RECOUNT, including the "Initial stock" one logged at item
+    // creation) is its own Firestore doc, so concurrent adjustments from
+    // different offline devices both land instead of one clobbering the
+    // other the way a last-write-wins whole-document quantity field would.
+    //
+    // The existence check is what keeps this idempotent: if this device
+    // already has the adjustment (it created it locally, and already ran it
+    // through adjustStock at that moment), the snapshot listener echoing it
+    // back must NOT re-apply the delta a second time. Only a genuinely new
+    // adjustment — one that arrived from another device — gets its delta
+    // replayed here.
+    @Transaction
+    suspend fun applyRemoteStockAdjustment(adjustment: StockAdjustment) {
+        if (adjustmentExists(adjustment.id)) return
+        adjustStockFromRemote(adjustment.itemId, adjustment.delta, adjustment.createdAt)
+        insertAdjustmentFromRemote(adjustment)
+    }
+
+    // ── Oversold (InventoryItem) ──────────────────────────────────
+    // A negative quantity after correct adjustment merging means two
+    // offline devices both validly sold against stock they could each see,
+    // and combined it wasn't enough — a genuine oversell, not a sync bug.
+    // Surfaced in the Reconciliation screen's "Stock" tab for an owner to
+    // correct with a Recount.
+    @Query("SELECT * FROM inventory_items WHERE isDeleted = 0 AND quantity < 0 ORDER BY quantity ASC")
+    fun getOversoldItems(): Flow<List<InventoryItem>>
+
+    @Query("SELECT COUNT(*) FROM inventory_items WHERE isDeleted = 0 AND quantity < 0")
+    fun getOversoldItemsCount(): Flow<Long>
 
     // ── Reconciliation (InventoryItem) ───────────────────────────
     // Owner-only queries backing the Reconciliation screen — surfaces items

@@ -102,8 +102,9 @@ class SyncEngine(
             externalScope.launch(Dispatchers.IO) {
                 combine(
                     smeDao.getUnreconciledSalesCount(),
-                    inventoryDao.getUnreconciledItemsCount()
-                ) { sales, items -> (sales + items).toInt() }
+                    inventoryDao.getUnreconciledItemsCount(),
+                    inventoryDao.getOversoldItemsCount()
+                ) { sales, items, oversold -> (sales + items + oversold).toInt() }
                     .distinctUntilChanged()
                     .collect { count -> ReconciliationNotifier.notifyPending(context, count) }
             }

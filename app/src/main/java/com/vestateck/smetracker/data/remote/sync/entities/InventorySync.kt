@@ -47,6 +47,21 @@ class InventorySync(
                             // RemoteInventoryItem never carries costPrice — preserve
                             // whatever's locally known (see updateItemCostPrice).
                             val existing = inventoryDao.getItemById(remote.id)
+                            // quantity is deliberately NOT adopted from remote here — it's
+                            // pushed as a best-effort snapshot (see pushPending below) but
+                            // is no longer trusted on pull. Two devices editing this same
+                            // item's stock offline would otherwise have whichever one's
+                            // pushPending() runs second silently overwrite the other's
+                            // change, since this whole document is a plain last-write-wins
+                            // .set(). Instead quantity is derived locally by replaying
+                            // stock_adjustments (see StockAdjustmentSync /
+                            // InventoryDao.applyRemoteStockAdjustment), which sync as
+                            // individual additive docs and so merge correctly instead of
+                            // clobbering. A brand-new item this device has never seen
+                            // (existing == null) starts at 0 and is caught up by that
+                            // adjustment replay — including the "Initial stock" entry
+                            // logged at creation (see SMERepository.logInitialStock) —
+                            // shortly after, regardless of listener arrival order.
                             // Same reasoning as SaleSync's financialsReconciled:
                             // existing == null means this item is new to this device (came
                             // from someone else's device), so its cost is still the unset
@@ -57,7 +72,7 @@ class InventorySync(
                                     id = remote.id,
                                     name = remote.name,
                                     category = remote.category,
-                                    quantity = remote.quantity,
+                                    quantity = existing?.quantity ?: 0,
                                     reorderLevel = remote.reorderLevel,
                                     costPrice = existing?.costPrice ?: 0.0,
                                     sellingPrice = remote.sellingPrice,
@@ -143,6 +158,10 @@ class InventorySync(
                             id = item.id,
                             name = item.name,
                             category = item.category,
+                            // Informational snapshot only — no device pulls this back as
+                            // authoritative anymore (see the pull listener above). Kept on
+                            // the doc mainly so anything reading Firestore directly (e.g. a
+                            // future web view) has a reasonable value to show.
                             quantity = item.quantity,
                             reorderLevel = item.reorderLevel,
                             sellingPrice = item.sellingPrice,
