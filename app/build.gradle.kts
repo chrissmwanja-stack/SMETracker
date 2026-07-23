@@ -31,8 +31,8 @@ android {
         applicationId = "com.vestateck.smetracker"
         minSdk = 24
         targetSdk = 37
-        versionCode = 2
-        versionName = "2.5"
+        versionCode = 3
+        versionName = "1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
