@@ -17,8 +17,13 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.vestateck.smetracker.navigation.Screen
 import com.vestateck.smetracker.data.entities.InventoryItem
+import com.vestateck.smetracker.ui.components.RecountStockDialog
 import com.vestateck.smetracker.utils.ImageUtils
 import com.vestateck.smetracker.viewmodel.SMEViewModel
+import com.vestateck.smetracker.screens.InventoryItemDialog
+import com.vestateck.smetracker.screens.InventoryThumbnail
+import com.vestateck.smetracker.screens.ReceiveStockDialog
+
 
 import java.text.NumberFormat
 import java.util.Locale
