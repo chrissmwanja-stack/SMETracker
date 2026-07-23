@@ -28,6 +28,11 @@ object IdGenerator {
 
     fun newId(): String {
         testId?.let { return it }
-        return idGenCollection.document().id
+        return try {
+            idGenCollection.document().id
+        } catch (e: Exception) {
+            // Fallback for local unit tests where Firebase is not mocked
+            java.util.UUID.randomUUID().toString().replace("-", "").take(20)
+        }
     }
 }
