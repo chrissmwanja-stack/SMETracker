@@ -12,28 +12,10 @@ import androidx.compose.runtime.getValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import com.vestateck.smetracker.data.remote.auth.AuthRepository
 import com.vestateck.smetracker.data.remote.auth.AuthViewModel
 import com.vestateck.smetracker.data.remote.auth.BusinessRepository
 import com.vestateck.smetracker.data.remote.auth.SessionManager
 import com.vestateck.smetracker.data.remote.model.MemberRole
-
-/**
- * Manual DI factory, matching SMETracker's existing pattern (no Hilt).
- * Wire this in wherever the app currently constructs its top-level
- * ViewModels (e.g. MainActivity or an AppContainer).
- */
-class AuthViewModelFactory(
-    private val authRepository: AuthRepository,
-    private val sessionManager: SessionManager
-) : ViewModelProvider.Factory {
-    override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        @Suppress("UNCHECKED_CAST")
-        return AuthViewModel(authRepository, sessionManager) as T
-    }
-}
 
 /**
  * Entry point router: reads persisted session state and decides whether to

@@ -18,15 +18,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.vestateck.smetracker.data.database.SMEDatabase
-import com.vestateck.smetracker.data.remote.auth.AuthRepository
 import com.vestateck.smetracker.data.remote.auth.AuthViewModel
 import com.vestateck.smetracker.data.remote.auth.BusinessRepository
 import com.vestateck.smetracker.data.remote.model.MemberRole
@@ -34,21 +33,29 @@ import com.vestateck.smetracker.data.remote.auth.SessionManager
 import com.vestateck.smetracker.data.remote.sync.SyncEngine
 import com.vestateck.smetracker.data.remote.sync.SyncWorker
 import com.vestateck.smetracker.navigation.Screen
-import com.vestateck.smetracker.repository.SMERepository
 import com.vestateck.smetracker.screens.*
 import com.vestateck.smetracker.ui.auth.AuthNavGate
-import com.vestateck.smetracker.ui.auth.AuthViewModelFactory
 import com.vestateck.smetracker.ui.components.OwnerOnlyGate
 import com.vestateck.smetracker.ui.theme.SMETrackerTheme
-import com.vestateck.smetracker.utils.ReceiptNumberGenerator
 import com.vestateck.smetracker.viewmodel.SMEViewModel
-import com.vestateck.smetracker.viewmodel.SMEViewModelFactory
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    private val database by lazy { SMEDatabase.getDatabase(this) }
+
+    // All provided by di/DatabaseModule.kt, di/RepositoryModule.kt, and
+    // di/SyncModule.kt - see those for what constructs each one and why.
+    // Field injection (not constructor injection) because ComponentActivity
+    // doesn't offer a Hilt-friendly constructor hook; Hilt populates these
+    // between super.onCreate() and onCreate()'s body running.
+    @Inject lateinit var database: SMEDatabase
+    @Inject lateinit var sessionManager: SessionManager
+    @Inject lateinit var businessRepository: BusinessRepository
+    @Inject lateinit var syncEngine: SyncEngine
 
     // Registered eagerly (not `by lazy`) since ActivityResultLauncher must be
     // registered before the Activity reaches STARTED - registering it lazily
@@ -73,31 +80,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Phase 2 auth dependencies - manual DI, matching the rest of the app.
-    private val authRepository by lazy { AuthRepository() }
-    private val sessionManager by lazy { SessionManager(applicationContext) }
-    private val businessRepository by lazy { BusinessRepository() }
-    private val authViewModelFactory by lazy {
-        AuthViewModelFactory(authRepository, sessionManager)
-    }
-
-    // Phase 3 sync - Customer-only proof for now (see SyncEngine's class doc).
-    // Scoped to lifecycleScope: cancelled automatically on Activity destroy,
-    // matching the rest of this app's "no long-lived process-level DI" pattern.
-    // start() is safe to call multiple times (no-ops if already listening) and
-    // internally waits for sessionManager.sessionState to report a business
-    // before attaching anything, so it's fine to construct this eagerly.
-    private val syncEngine by lazy { SyncEngine(database.smeDao(), database.inventoryDao(), sessionManager, lifecycleScope, applicationContext) }
-
-    // Local-only receipt-number sequence for provisionalReceiptNumber - see
-    // ReceiptNumberGenerator's class doc. SharedPreferences-backed, so this
-    // only needs applicationContext, same as sessionManager above.
-    private val receiptNumberGenerator by lazy { ReceiptNumberGenerator(applicationContext) }
-
-    private val viewModelFactory by lazy {
-        SMEViewModelFactory(SMERepository(database.smeDao(), database.inventoryDao()), syncEngine, sessionManager, businessRepository, receiptNumberGenerator)
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -110,7 +92,7 @@ class MainActivity : ComponentActivity() {
                     var entered by remember {
                         mutableStateOf<Pair<String, MemberRole>?>(null)
                     }
-                    val authViewModel: AuthViewModel = viewModel(factory = authViewModelFactory)
+                    val authViewModel: AuthViewModel = hiltViewModel()
 
                     val currentEntry = entered
                     if (currentEntry == null) {
@@ -131,7 +113,7 @@ class MainActivity : ComponentActivity() {
                         )
                     } else {
                         val navController = rememberNavController()
-                        val viewModel: SMEViewModel = viewModel(factory = viewModelFactory)
+                        val viewModel: SMEViewModel = hiltViewModel()
 
                         NavHost(navController = navController, startDestination = Screen.Dashboard.route) {
                             composable(Screen.Dashboard.route) {

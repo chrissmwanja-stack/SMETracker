@@ -1,14 +1,11 @@
 package com.vestateck.smetracker.di
 
-/*
-// Hilt is not yet set up in this project.
-// The project is currently using manual dependency injection in AppNavigation.kt.
-// If you want to use Hilt, you will need to add the necessary dependencies to build.gradle.kts.
-
 import android.content.Context
-import androidx.room.Room
+import com.vestateck.smetracker.data.dao.DebtDao
+import com.vestateck.smetracker.data.dao.InventoryDao
+import com.vestateck.smetracker.data.dao.SaleDao
+import com.vestateck.smetracker.data.dao.SMEDao
 import com.vestateck.smetracker.data.database.SMEDatabase
-import com.vestateck.smetracker.data.dao.*
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -16,38 +13,29 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
+/**
+ * Room database + DAOs. Mirrors what SMEDatabase.getDatabase(context) did by
+ * hand in MainActivity before Hilt - single @Singleton instance for the
+ * whole process, same as the old `by lazy` val.
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): SMEDatabase {
-        return Room.databaseBuilder(
-            context,
-            SMEDatabase::class.java,
-            "sme_tracker.db"
-        )
-            .fallbackToDestructiveMigration()
-            .build()
-    }
+    fun provideDatabase(@ApplicationContext context: Context): SMEDatabase =
+        SMEDatabase.getDatabase(context)
 
     @Provides
-    fun provideSaleDao(database: SMEDatabase): SaleDao = database.saleDao()
-
-    @Provides
-    fun provideCustomerDao(database: SMEDatabase): CustomerDao = database.customerDao()
-
-    @Provides
-    fun provideDebtDao(database: SMEDatabase): DebtDao = database.debtDao()
+    fun provideSmeDao(database: SMEDatabase): SMEDao = database.smeDao()
 
     @Provides
     fun provideInventoryDao(database: SMEDatabase): InventoryDao = database.inventoryDao()
 
     @Provides
-    fun provideExpenseDao(database: SMEDatabase): ExpenseDao = database.expenseDao()
+    fun provideSaleDao(database: SMEDatabase): SaleDao = database.saleDao()
 
     @Provides
-    fun provideTaskDao(database: SMEDatabase): TaskDao = database.taskDao()
+    fun provideDebtDao(database: SMEDatabase): DebtDao = database.debtDao()
 }
-*/

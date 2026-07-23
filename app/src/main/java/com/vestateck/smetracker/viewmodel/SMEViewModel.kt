@@ -14,9 +14,11 @@ import com.vestateck.smetracker.repository.SMERepository
 import com.vestateck.smetracker.utils.BulkInventoryRow
 import com.vestateck.smetracker.utils.IdGenerator
 import com.vestateck.smetracker.utils.TimeUtils
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 // One product line from AddSaleScreen's cart - the subset of SaleLineItem
 // that's already been validated/resolved (amount and quantity parsed,
@@ -28,7 +30,16 @@ data class SaleLineInput(
     val quantity: Int = 1
 )
 
-class SMEViewModel(
+/**
+ * Obtained via hiltViewModel() - see di/ package for where each dependency
+ * below comes from. The nullable defaults stay in place even under Hilt:
+ * Dagger always supplies real instances in production (nullability doesn't
+ * change which binding it looks up), but the defaults still let
+ * SMEViewModelReconciliationTest construct this directly with just a
+ * repository via plain `SMEViewModel(repository)`, same as before.
+ */
+@HiltViewModel
+class SMEViewModel @Inject constructor(
     private val repository: SMERepository,
     // Nullable so tests/previews that don't need sync can keep constructing
     // this ViewModel with just a repository. Every mutation below calls

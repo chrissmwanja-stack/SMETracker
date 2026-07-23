@@ -5,10 +5,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vestateck.smetracker.data.remote.model.MemberRole
 import com.google.firebase.auth.PhoneAuthProvider
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /**
  * Where the login flow currently stands. The screen switches on this rather
@@ -25,11 +27,11 @@ sealed class AuthScreenState {
 }
 
 /**
- * Manual DI: constructed with its dependencies directly (matches the rest of
- * SMETracker's pattern — no Hilt). Wire this up wherever ViewModels are
- * currently instantiated (e.g. a simple ViewModelFactory).
+ * Obtained via hiltViewModel() wherever it's needed - AuthRepository and
+ * SessionManager come from RepositoryModule (see di/ package).
  */
-class AuthViewModel(
+@HiltViewModel
+class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val sessionManager: SessionManager
 ) : ViewModel() {

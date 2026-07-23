@@ -1,9 +1,10 @@
 package com.vestateck.smetracker.data.remote.sync
 
 import android.content.Context
+import androidx.hilt.work.HiltWorker
 import androidx.work.*
-import com.vestateck.smetracker.data.database.SMEDatabase
-import com.vestateck.smetracker.data.remote.auth.SessionManager
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -11,25 +12,22 @@ import java.util.concurrent.TimeUnit
 /**
  * WorkManager worker that flushes offline local database changes (pendingSync = 1)
  * to Cloud Firestore whenever internet connectivity is available.
+ *
+ * @HiltWorker instead of hand-constructing SMEDatabase/SessionManager/
+ * SyncEngine here: this now shares the exact same @Singleton SyncEngine
+ * (see di/SyncModule.kt) as MainActivity, rather than building a second,
+ * separate SyncEngine instance with its own listeners. SMETrackerApplication
+ * wires the resulting HiltWorkerFactory into WorkManager.
  */
-class SyncWorker(
-    appContext: Context,
-    workerParams: WorkerParameters
+@HiltWorker
+class SyncWorker @AssistedInject constructor(
+    @Assisted appContext: Context,
+    @Assisted workerParams: WorkerParameters,
+    private val syncEngine: SyncEngine
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
-            val database = SMEDatabase.getDatabase(applicationContext)
-            val sessionManager = SessionManager(applicationContext)
-
-            val syncEngine = SyncEngine(
-                smeDao = database.smeDao(),
-                inventoryDao = database.inventoryDao(),
-                sessionManager = sessionManager,
-                externalScope = this,
-                context = applicationContext
-            )
-
             // Trigger push for all locally queued mutations
             syncEngine.requestPush()
             Result.success()

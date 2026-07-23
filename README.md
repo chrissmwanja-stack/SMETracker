@@ -10,7 +10,7 @@ Android app for small business inventory, sales, debt, and expense tracking, bui
 - **Local storage:** Room (offline cache, source of truth for the UI)
 - **Remote storage:** Firestore (source of truth for sync, source of truth once a device comes back online)
 - **Auth:** Firebase Phone Auth (OTP via SMS)
-- **DI:** manual (no Hilt yet — see `di/DatabaseModule.kt`, currently commented out; wiring happens by hand in `MainActivity.kt`)
+- **DI:** Hilt — see `di/DatabaseModule.kt`, `di/RepositoryModule.kt`, `di/SyncModule.kt`. `SyncEngine` runs on a `@Singleton` `@ApplicationScope` `CoroutineScope` (not an Activity's `lifecycleScope`) so it can be shared between `MainActivity` and `SyncWorker` (a `@HiltWorker`) instead of each hand-rolling its own instance.
 - **Build:** Gradle 9.4.1, AGP 9.2.1, Kotlin 2.3.21, compileSdk/targetSdk 37, minSdk 24, JDK 21
 
 ## Setup
@@ -85,10 +85,6 @@ Room database, currently at schema version 14. Most version bumps pre-launch use
 Unit tests cover the pure, Android/Firebase-free logic — `DashboardAnalytics`, `TimeUtils`, `CurrencyUtils`, `MemberRole` parsing, the checkout-grouping logic behind receipt numbering (`CheckoutGrouping.kt`, tested in `CheckoutGroupingTest.kt`) — plus `SMEViewModel`'s reconciliation math (`reconcileSale`/`reconcileInventoryCost`) in `SMEViewModelReconciliationTest.kt`, using hand-rolled `FakeSMEDao`/`FakeInventoryDao` fixtures (no mocking library in the project). Test fixtures for `Sale`, `Debt`, `Expense`, `InventoryItem`, and `Customer` must pass an explicit `id` string, since their default (`IdGenerator.newId()`) calls `FirebaseFirestore.getInstance()`, which crashes in a plain JVM test.
 
 Not yet covered: the rest of `SyncEngine` and its per-entity sync classes (would need a fake/mocked `Firestore` instance) — `CheckoutGrouping.kt` was deliberately split out of `SaleSync.pushPending` so its logic could be tested without one.
-
-## Known follow-ups
-
-- Hilt DI is scaffolded but not wired in (`di/DatabaseModule.kt` is commented out); DI is currently manual in `MainActivity.kt`.
 
 ## Receipts
 
