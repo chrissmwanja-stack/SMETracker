@@ -51,7 +51,7 @@ Compose UI  →  SMEViewModel  →  SMERepository  →  Room (local, offline cac
 
 **Read path:** one Firestore snapshot listener per collection the current session is allowed to read (scoped by role — see below). Every added/modified doc is upserted into Room with `pendingSync = false`, since it just arrived from the server.
 
-**Write path:** `requestPush()` is called by the ViewModel after any local mutation. It walks every locally-pending row across every entity and pushes each to Firestore, clearing `pendingSync` on success. There's no retry/backoff/WorkManager — a failed push is simply retried on the next `requestPush()` call (the next edit, or the next `attachListeners()` catch-up on reconnect/re-login).
+**Write path:** `requestPush()` is called by the ViewModel after any local mutation. It walks every locally-pending row across every entity and pushes each to Firestore, clearing `pendingSync` on success. A failed push is retried on the next `requestPush()` call (the next edit, or the next `attachListeners()` catch-up on reconnect/re-login), and also by `SyncWorker` (`data/remote/sync/entities/SyncWorker.kt`) — a `@HiltWorker` sharing the same `@Singleton SyncEngine` — which runs a 15-minute `PeriodicWorkRequest` constrained to `NetworkType.CONNECTED` with exponential backoff, plus a one-time `triggerImmediateSync()` request queued after offline edits. `MainActivity` schedules the periodic worker on session launch.
 
 **Role-based split (Owner vs. Worker):**
 
@@ -62,11 +62,12 @@ The owner/worker split mirrors `firestore.rules` exactly, so a rejected write fr
 - A worker's expense submission always pushes as `PENDING` with no approval fields (required by the create rule). An owner's own entry auto-pushes as `APPROVED` (there's no approve/reject UI yet for an owner reviewing their own submissions).
 - Owner-only collections (`saleFinancials`, `inventoryCosts`) are only attached at all on an owner's device — a worker's device never even opens those listeners, matching what the rules already deny.
 
+**Soft deletes:** every entity carries an `isDeleted` tombstone column. `SMERepository.delete*()` calls mark the local row `isDeleted = 1, pendingSync = 1` rather than issuing a Room `@Delete` (the DAO-level `@Delete` methods still exist but are unused by the app — kept for tests). The next push carries `isDeleted` to Firestore in the entity's normal `RemoteX` document (e.g. `RemoteSale.isDeleted` in `SaleSync.pushPending`), and incoming listeners merge it back in on pull, so a delete on one device does propagate to others — it's a soft delete synced like any other field update, not a hard Firestore document delete. Row-reading queries filter `WHERE isDeleted = 0`.
+
 **Known limitations** (by design, not yet addressed):
-- Deletions are not synced in either direction.
 - No conflict resolution — last write wins, whichever side writes last.
-- Push only runs when requested, not on a timer or connectivity change.
-- The reconciliation-pending notification (`ReconciliationNotifier`) is local-only: it requires `SyncEngine`'s process to be alive and collecting. It won't wake the app if killed — that would need FCM plus a server-side Cloud Function watching the sales/inventory collections, which doesn't exist yet.
+- The reconciliation-pending notification (`ReconciliationNotifier`) is local-only: it requires `SyncEngine`'s process to be alive and collecting. It won't wake a killed app — that would need FCM plus a server-side Cloud Function watching the sales/inventory collections, which doesn't exist yet.
+- `SyncEngine` and the per-entity sync classes (`SaleSync`, `InventorySync`, etc.) have no automated test coverage — only the pure logic deliberately split out of them (`SaleMerge.kt`, `CheckoutGrouping.kt`) is unit tested. Exercising the sync classes themselves would need a fake/mocked `Firestore`, or the `androidTest` emulator harness (`FirebaseEmulatorRule.kt`) extended to cover them — currently that harness only covers auth and one DAO test, and isn't run in CI (see below).
 
 ### Auth (`data/remote/auth/`)
 

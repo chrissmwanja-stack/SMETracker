@@ -42,10 +42,15 @@ data class SaleLineInput(
 class SMEViewModel @Inject constructor(
     private val repository: SMERepository,
     // Nullable so tests/previews that don't need sync can keep constructing
-    // this ViewModel with just a repository. Every mutation below calls
-    // syncEngine?.requestPush() after its local write - deletions are the
-    // one exception, since SyncEngine doesn't sync deletes in either
-    // direction yet (a known limitation, not an oversight here).
+    // this ViewModel with just a repository. Every mutation below - including
+    // delete*() - calls syncEngine?.requestPush() after its local write.
+    // Deletes are soft (repository.delete*() sets isDeleted=1, pendingSync=1
+    // on the Room row rather than removing it), and the isDeleted flag rides
+    // along in the entity's normal RemoteX push/pull just like any other
+    // field - see SaleSync.pushPending, etc. Without the requestPush() call
+    // here, a delete would still eventually reach Firestore via SyncWorker's
+    // periodic job, but with up to a 15-minute delay instead of the
+    // immediate push every other mutation gets.
     private val syncEngine: SyncEngine? = null,
     // Nullable for the same reason as syncEngine. Used only to stamp
     // recordedBy and the reconciliation flags at creation time (see
@@ -176,6 +181,7 @@ class SMEViewModel @Inject constructor(
 
     fun deleteCustomer(customer: Customer) = viewModelScope.launch {
         repository.deleteCustomer(customer)
+        syncEngine?.requestPush()
     }
 
     // Debt Actions
@@ -280,6 +286,7 @@ class SMEViewModel @Inject constructor(
 
     fun deleteInventoryItem(item: InventoryItem) = viewModelScope.launch {
         repository.deleteInventoryItem(item)
+        syncEngine?.requestPush()
     }
 
     fun getAdjustmentsForItem(itemId: String) = repository.getAdjustmentsForItem(itemId)
@@ -462,6 +469,7 @@ class SMEViewModel @Inject constructor(
 
     fun deleteSale(sale: Sale) = viewModelScope.launch {
         repository.deleteSale(sale)
+        syncEngine?.requestPush()
     }
 
     // Expense Actions
@@ -487,6 +495,7 @@ class SMEViewModel @Inject constructor(
 
     fun deleteExpense(expense: Expense) = viewModelScope.launch {
         repository.deleteExpense(expense)
+        syncEngine?.requestPush()
     }
 
     // Task Actions
@@ -509,6 +518,7 @@ class SMEViewModel @Inject constructor(
 
     fun deleteTask(task: Task) = viewModelScope.launch {
         repository.deleteTask(task)
+        syncEngine?.requestPush()
     }
 
     // Reconciliation Actions (owner-only; screen is responsible for gating)
