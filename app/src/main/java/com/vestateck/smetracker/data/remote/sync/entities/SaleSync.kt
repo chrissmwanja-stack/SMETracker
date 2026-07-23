@@ -2,8 +2,6 @@ package com.vestateck.smetracker.data.remote.sync.entities
 
 import com.vestateck.smetracker.data.dao.InventoryDao
 import com.vestateck.smetracker.data.dao.SMEDao
-import com.vestateck.smetracker.data.entities.PaymentMethod
-import com.vestateck.smetracker.data.entities.Sale
 import com.vestateck.smetracker.data.remote.model.MemberRole
 import com.vestateck.smetracker.data.remote.model.RemoteSale
 import com.vestateck.smetracker.data.remote.model.SaleFinancials
@@ -83,45 +81,11 @@ class SaleSync(
                             val linkedItem = if (existing == null) {
                                 remote.inventoryItemId?.let { inventoryDao.getItemById(it) }
                             } else null
-                            val itemCostKnown = linkedItem != null && linkedItem.costReconciled && linkedItem.costPrice > 0.0
-                            val derivedCostPriceSnapshot = linkedItem?.let { it.costPrice * remote.quantity } ?: 0.0
-                            val financialsReconciled = existing?.financialsReconciled
-                                ?: (remote.inventoryItemId == null || itemCostKnown)
-                            val profit = existing?.profit
-                                ?: if (itemCostKnown) remote.amount - derivedCostPriceSnapshot else 0.0
-                            val costPriceSnapshot = existing?.costPriceSnapshot
-                                ?: if (itemCostKnown) derivedCostPriceSnapshot else 0.0
-                            // provisionalReceiptNumber only ever means something on the
-                            // device that generated it - RemoteSale doesn't carry it.
-                            // Preserve this device's own value; a sale pulled in from
-                            // another device (existing == null) has never had one assigned
-                            // here, so fall back to the (possibly still-null) authoritative
-                            // number, or a placeholder if neither exists yet.
-                            val provisionalNumber = existing?.provisionalReceiptNumber
-                                ?: remote.finalReceiptNumber
-                                ?: ""
-                            smeDao.insertSale(
-                                Sale(
-                                    id = remote.id,
-                                    customerId = remote.customerId,
-                                    customerName = remote.customerName,
-                                    description = remote.description,
-                                    amount = remote.amount,
-                                    profit = profit,
-                                    costPriceSnapshot = costPriceSnapshot,
-                                    inventoryItemId = remote.inventoryItemId,
-                                    quantity = remote.quantity,
-                                    date = remote.date,
-                                    paymentMethod = runCatching { PaymentMethod.valueOf(remote.paymentMethod) }
-                                        .getOrDefault(PaymentMethod.CASH),
-                                    recordedBy = remote.recordedBy,
-                                    financialsReconciled = financialsReconciled,
-                                    provisionalReceiptNumber = provisionalNumber,
-                                    finalReceiptNumber = remote.finalReceiptNumber,
-                                    pendingSync = existing?.pendingSync ?: itemCostKnown,
-                                    isDeleted = remote.isDeleted
-                                )
-                            )
+                            // The actual merge decision (financialsReconciled/profit/
+                            // costPriceSnapshot/provisionalReceiptNumber/pendingSync) lives
+                            // in mergeIncomingSale, split out so it's unit-testable without
+                            // a FirebaseFirestore instance - see SaleMerge.kt.
+                            smeDao.insertSale(mergeIncomingSale(remote, existing, linkedItem))
                         } catch (e: Exception) {
                             // customerId is a real FK to customers - if this sale's
                             // snapshot arrives before its linked customer's does (no
