@@ -143,6 +143,9 @@ class AuthViewModel @Inject constructor(
         _screenState.value = AuthScreenState.EnterPhone
     }
 
+    /** Used right after LoggedIn fires, to tag a new offline-PIN credential row. See AuthNavGate. */
+    fun currentFirebaseUid(): String? = authRepository.currentUid
+
     fun signOut(onComplete: () -> Unit = {}) {
         authRepository.signOut()
         viewModelScope.launch {

@@ -10,19 +10,21 @@ import androidx.room.withTransaction
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.vestateck.smetracker.data.dao.DebtDao
 import com.vestateck.smetracker.data.dao.InventoryDao
+import com.vestateck.smetracker.data.dao.LocalCredentialDao
 import com.vestateck.smetracker.data.dao.SaleDao
 import com.vestateck.smetracker.data.dao.SMEDao
 import com.vestateck.smetracker.data.entities.Customer
 import com.vestateck.smetracker.data.entities.Debt
 import com.vestateck.smetracker.data.entities.Expense
 import com.vestateck.smetracker.data.entities.InventoryItem
+import com.vestateck.smetracker.data.entities.LocalCredential
 import com.vestateck.smetracker.data.entities.Sale
 import com.vestateck.smetracker.data.entities.StockAdjustment
 import com.vestateck.smetracker.data.entities.Task
 
 @Database(
-    entities = [Sale::class, Customer::class, Debt::class, InventoryItem::class, Expense::class, Task::class, StockAdjustment::class],
-    version = 15,
+    entities = [Sale::class, Customer::class, Debt::class, InventoryItem::class, Expense::class, Task::class, StockAdjustment::class, LocalCredential::class],
+    version = 16,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -32,6 +34,7 @@ abstract class SMEDatabase : RoomDatabase() {
     abstract fun inventoryDao(): InventoryDao
     abstract fun saleDao(): SaleDao
     abstract fun debtDao(): DebtDao
+    abstract fun localCredentialDao(): LocalCredentialDao
 
     // Local Room storage has no businessId scoping on any entity - it's a
     // single shared cache of whatever business's Firestore data was synced
@@ -191,6 +194,29 @@ abstract class SMEDatabase : RoomDatabase() {
             }
         }
 
+        // v15 -> v16: added local_credentials table - backs offline PIN login
+        // (see LocalCredential.kt / SessionManager). Purely additive, no
+        // existing tables touched; new table starts empty until a user
+        // completes an online phone-OTP verification and sets a PIN.
+        private val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `local_credentials` (
+                        `businessId` TEXT NOT NULL,
+                        `phoneNumberE164` TEXT NOT NULL,
+                        `role` TEXT NOT NULL,
+                        `firebaseUid` TEXT NOT NULL,
+                        `pinHash` TEXT NOT NULL,
+                        `pinSalt` TEXT NOT NULL,
+                        `lastVerifiedOnlineAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`businessId`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getDatabase(context: Context): SMEDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -198,7 +224,7 @@ abstract class SMEDatabase : RoomDatabase() {
                     SMEDatabase::class.java,
                     "sme_tracker_database"
                 )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                     // Safety net for older installs with no migration path defined (v1-v4).
                     // Any new schema change from here on should get its own Migration above
                     // instead of relying on this, or existing user data will be wiped on upgrade.

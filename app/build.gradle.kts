@@ -68,6 +68,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 } // android block ends here
 
@@ -90,6 +91,9 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation("androidx.fragment:fragment-ktx:1.8.9")
+
+    implementation("com.google.firebase:firebase-appcheck-debug:18.0.0")
+    implementation("com.google.firebase:firebase-appcheck-playintegrity:18.0.0")
 
     // Background Offline Sync Execution
     implementation("androidx.work:work-runtime-ktx:2.11.2")

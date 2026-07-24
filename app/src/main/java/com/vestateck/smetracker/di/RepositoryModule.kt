@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.vestateck.smetracker.data.dao.InventoryDao
+import com.vestateck.smetracker.data.dao.LocalCredentialDao
 import com.vestateck.smetracker.data.dao.SMEDao
 import com.vestateck.smetracker.data.remote.auth.AuthRepository
 import com.vestateck.smetracker.data.remote.auth.BusinessRepository
@@ -52,8 +53,11 @@ object RepositoryModule {
 
     @Provides
     @Singleton
-    fun provideSessionManager(@ApplicationContext context: Context): SessionManager =
-        SessionManager(context)
+    fun provideSessionManager(
+        @ApplicationContext context: Context,
+        localCredentialDao: LocalCredentialDao
+    ): SessionManager =
+        SessionManager(context, localCredentialDao)
 
     @Provides
     @Singleton

@@ -43,6 +43,10 @@ class AuthRepository(
     val currentPhoneNumber: String?
         get() = auth.currentUser?.phoneNumber
 
+    /** Used to tag the local offline-PIN credential row (see SessionManager.savePinAfterOnlineVerification). */
+    val currentUid: String?
+        get() = auth.currentUser?.uid
+
     val isLoggedIn: Boolean
         get() = auth.currentUser != null
 

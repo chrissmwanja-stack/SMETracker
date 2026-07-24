@@ -3,6 +3,7 @@ package com.vestateck.smetracker.di
 import android.content.Context
 import com.vestateck.smetracker.data.dao.DebtDao
 import com.vestateck.smetracker.data.dao.InventoryDao
+import com.vestateck.smetracker.data.dao.LocalCredentialDao
 import com.vestateck.smetracker.data.dao.SaleDao
 import com.vestateck.smetracker.data.dao.SMEDao
 import com.vestateck.smetracker.data.database.SMEDatabase
@@ -38,4 +39,7 @@ object DatabaseModule {
 
     @Provides
     fun provideDebtDao(database: SMEDatabase): DebtDao = database.debtDao()
+
+    @Provides
+    fun provideLocalCredentialDao(database: SMEDatabase): LocalCredentialDao = database.localCredentialDao()
 }
