@@ -1,8 +1,16 @@
 // screens/BarcodeScanField.kt
 package com.vestateck.smetracker.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,8 +23,10 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.core.content.ContextCompat
 
 // Almost every USB/Bluetooth barcode scanner is a HID keyboard emulator: it
 // "types" the code into whatever field has focus, then sends an Enter
@@ -32,6 +42,15 @@ import androidx.compose.ui.input.key.KeyEventType
 // submit either way, since commit only ever fires on an explicit
 // Enter/Done, never mid-keystroke. Trying to add a timing heuristic here
 // would add complexity without closing a real gap.
+//
+// That HID/typed path assumes the business already owns a scanner gun, or
+// is willing to type SKUs by hand. Most of SMETracker's actual target
+// users - solo shopkeepers whose only device is their phone - have
+// neither, so the trailing camera icon below opens CameraBarcodeScanner as
+// a second, equally-first-class way to fill the same field. Both paths
+// converge on the same onScan(code) callback, so callers (AddSaleScreen,
+// AddInventoryScreen, InventoryItemDialog) don't need to know or care
+// which input method produced the code.
 @Composable
 fun BarcodeScanField(
     label: String,
@@ -39,11 +58,28 @@ fun BarcodeScanField(
     onScan: (code: String) -> Unit
 ) {
     var value by remember { mutableStateOf("") }
+    var showCameraScanner by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     fun commit() {
         val code = value.trim()
         value = ""
         if (code.isNotEmpty()) onScan(code)
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) showCameraScanner = true }
+
+    fun openCameraScanner() {
+        val granted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            showCameraScanner = true
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
     }
 
     OutlinedTextField(
@@ -52,6 +88,11 @@ fun BarcodeScanField(
         label = { Text(label) },
         placeholder = { Text("Scan, or type a code and press Enter") },
         singleLine = true,
+        trailingIcon = {
+            IconButton(onClick = { openCameraScanner() }) {
+                Icon(Icons.Default.CameraAlt, contentDescription = "Scan with camera")
+            }
+        },
         modifier = modifier
             // Primary path: a hardware scanner's Enter keypress. Software
             // keyboards' Done/search action doesn't always surface as this
@@ -69,4 +110,15 @@ fun BarcodeScanField(
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { commit() })
     )
+
+    if (showCameraScanner) {
+        CameraBarcodeScanner(
+            onResult = { code ->
+                showCameraScanner = false
+                val trimmed = code.trim()
+                if (trimmed.isNotEmpty()) onScan(trimmed)
+            },
+            onDismiss = { showCameraScanner = false }
+        )
+    }
 }

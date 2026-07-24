@@ -132,6 +132,16 @@ dependencies {
 
     implementation("androidx.datastore:datastore-preferences:1.2.1")
 
+    // Camera-based fallback for BarcodeScanField (see that file's doc
+    // comment) - most SMETracker users scan with just a phone camera, not
+    // a dedicated HID scanner gun, so this supplements rather than
+    // replaces the hardware-scanner/typed-entry path.
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.mlkit.barcode.scanning)
+
 
 
     testImplementation(libs.junit)
