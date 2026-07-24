@@ -32,7 +32,7 @@ import java.util.UUID
 // holding individually-mutable fields, so each line's own recomposition
 // scope stays simple (same pattern as the single-item fields this screen
 // used to have, just repeated per line).
-private data class SaleLineItem(
+internal data class SaleLineItem(
     val localId: String = UUID.randomUUID().toString(),
     val selectedItem: InventoryItem? = null,
     val description: String = "",
@@ -41,7 +41,7 @@ private data class SaleLineItem(
     val amountManuallyEdited: Boolean = false
 )
 
-private fun suggestedAmount(item: InventoryItem, qty: Int): String {
+internal fun suggestedAmount(item: InventoryItem, qty: Int): String {
     val total = item.sellingPrice * qty
     return if (total == total.toLong().toDouble()) total.toLong().toString() else total.toString()
 }
@@ -104,42 +104,18 @@ fun AddSaleScreen(viewModel: SMEViewModel, navController: NavController) {
         return hasProduct && amt > 0 && qty > 0 && !lineExceedsStock(line)
     }
 
-    // Scan-to-add: same "one line per item, bump quantity instead of a
-    // second line" rule as picking the same item twice from the dropdown
-    // (see itemAlreadyUsedElsewhere above).
+    // Scan-to-add: decision logic lives in resolveBarcodeScan (see
+    // BarcodeScanResolver.kt) so it's unit-testable without a Compose
+    // runtime; this just applies whatever it decides to the screen's state.
     fun handleScan(code: String) {
-        val match = inventoryItems.find { it.sku == code }
-        if (match == null) {
-            scanMessage = "No item matches code \"$code\""
-            return
+        val outcome = resolveBarcodeScan(code, inventoryItems, lineItems)
+        when (outcome) {
+            is BarcodeScanOutcome.BumpExistingLine -> updateLine(outcome.index, outcome.updatedLine)
+            is BarcodeScanOutcome.FillBlankLine -> updateLine(outcome.index, outcome.newLine)
+            is BarcodeScanOutcome.AppendNewLine -> lineItems.add(outcome.newLine)
+            is BarcodeScanOutcome.Rejected -> { /* nothing to apply to lineItems */ }
         }
-        val existingIndex = lineItems.indexOfFirst { it.selectedItem?.id == match.id }
-        if (existingIndex >= 0) {
-            val line = lineItems[existingIndex]
-            val newQty = (line.quantityInput.toIntOrNull() ?: 0) + 1
-            if (newQty > match.quantity) {
-                scanMessage = "Only ${match.quantity} of \"${match.name}\" in stock"
-                return
-            }
-            val amount = if (!line.amountManuallyEdited) suggestedAmount(match, newQty) else line.amount
-            updateLine(existingIndex, line.copy(quantityInput = newQty.toString(), amount = amount))
-        } else {
-            if (match.quantity <= 0) {
-                scanMessage = "\"${match.name}\" is out of stock"
-                return
-            }
-            val newLine = SaleLineItem(
-                selectedItem = match,
-                description = match.name,
-                quantityInput = "1",
-                amount = suggestedAmount(match, 1)
-            )
-            // Fill a still-blank line (e.g. the screen's default first row)
-            // instead of piling on an extra one.
-            val emptyIndex = lineItems.indexOfFirst { it.selectedItem == null && it.description.isBlank() }
-            if (emptyIndex >= 0) updateLine(emptyIndex, newLine) else lineItems.add(newLine)
-        }
-        scanMessage = "Added \"${match.name}\""
+        scanMessage = outcome.message
     }
 
     val totalAmount = lineItems.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
