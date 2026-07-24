@@ -33,6 +33,14 @@ import com.vestateck.smetracker.data.remote.model.MemberRole
  * data connection needed, for every login after the very first one. See
  * SessionManager's offline PIN credential section for the storage side of
  * this.
+ *
+ * IMPORTANT: pin-setup routing is driven by (session, localCredential)
+ * state, not by local composable flags. session.isLoggedIn flips to true
+ * as soon as login/verification completes, which recomposes this whole
+ * `when` from the top - any pending-setup intent held in composable-local
+ * state tied to a *different* branch would be silently abandoned the
+ * instant that happens. Keying off localCredential (backed by Room, so it
+ * survives recomposition) avoids that.
  */
 @Composable
 fun AuthNavGate(
@@ -54,12 +62,25 @@ fun AuthNavGate(
     var credentialChecked by remember { mutableStateOf(false) }
     var pinError by remember { mutableStateOf<String?>(null) }
     var verifyingPin by remember { mutableStateOf(false) }
+    var pinSetupSkipped by remember { mutableStateOf(false) }
 
-    LaunchedEffect(deviceBusinessId) {
+    // Re-check localCredential whenever deviceBusinessId OR the logged-in
+    // business changes - covers both "new device, known business" and
+    // "just finished OTP for a business this device hasn't verified before".
+    val credentialLookupKey = deviceBusinessId ?: session?.businessId
+
+    LaunchedEffect(credentialLookupKey) {
         credentialChecked = false
         pinError = null
-        localCredential = deviceBusinessId?.let { sessionManager.getLocalCredential(it) }
+        localCredential = credentialLookupKey?.let { sessionManager.getLocalCredential(it) }
         credentialChecked = true
+    }
+
+    // Reset the "user tapped skip" flag whenever we move to a different
+    // business/session so a skip on one login doesn't suppress the prompt
+    // for a later, different business on the same device.
+    LaunchedEffect(session?.businessId) {
+        pinSetupSkipped = false
     }
 
     when {
@@ -68,6 +89,38 @@ fun AuthNavGate(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
+        }
+
+        // Logged in with a business, but this device has never completed
+        // PIN setup for it yet - prompt before handing off into the app.
+        // Checked BEFORE the plain "enter app" branch below so a fresh
+        // login/business-creation can't skip straight past this screen.
+        session!!.isLoggedIn && session!!.hasBusiness && localCredential == null && !pinSetupSkipped -> {
+            val businessId = session!!.businessId!!
+            val role = session!!.role!!
+            SetPinScreen(
+                onPinSet = { pin ->
+                    scope.launch {
+                        val phone = sessionManager.sessionState.first().phoneNumberE164 ?: return@launch
+                        val uid = authViewModel.currentFirebaseUid() ?: ""
+                        sessionManager.savePinAfterOnlineVerification(
+                            businessId = businessId,
+                            phoneNumberE164 = phone,
+                            role = role,
+                            firebaseUid = uid,
+                            pin = pin
+                        )
+                        // Refresh so this branch's condition (localCredential
+                        // == null) stops matching on the next recomposition.
+                        localCredential = sessionManager.getLocalCredential(businessId)
+                        onEnterApp(businessId, role)
+                    }
+                },
+                onSkip = {
+                    pinSetupSkipped = true
+                    onEnterApp(businessId, role)
+                }
+            )
         }
 
         session!!.isLoggedIn && session!!.hasBusiness -> {
@@ -111,49 +164,17 @@ fun AuthNavGate(
         else -> {
             // Not logged in, or logged in but never completed business setup.
             var pendingOwnerPhone by remember { mutableStateOf<String?>(null) }
-            var pendingPinSetup by remember { mutableStateOf<Pair<String, MemberRole>?>(null) }
 
             when {
-                pendingPinSetup != null -> {
-                    val (businessId, role) = pendingPinSetup!!
-                    SetPinScreen(
-                        onPinSet = { pin ->
-                            scope.launch {
-                                val phone = sessionManager.sessionState.first().phoneNumberE164 ?: return@launch
-                                val uid = authViewModel.currentFirebaseUid() ?: ""
-                                sessionManager.savePinAfterOnlineVerification(
-                                    businessId = businessId,
-                                    phoneNumberE164 = phone,
-                                    role = role,
-                                    firebaseUid = uid,
-                                    pin = pin
-                                )
-                                pendingPinSetup = null
-                                onEnterApp(businessId, role)
-                            }
-                        },
-                        onSkip = {
-                            pendingPinSetup = null
-                            onEnterApp(businessId, role)
-                        }
-                    )
-                }
-
                 pendingOwnerPhone == null -> {
                     LoginScreen(
                         viewModel = authViewModel,
-                        onLoggedIn = { businessId, role ->
-                            scope.launch {
-                                // Only prompt for a PIN the first time this
-                                // business is verified on this device -
-                                // subsequent logins already have one.
-                                val existing = sessionManager.getLocalCredential(businessId)
-                                if (existing == null) {
-                                    pendingPinSetup = businessId to role
-                                } else {
-                                    onEnterApp(businessId, role)
-                                }
-                            }
+                        onLoggedIn = { _, _ ->
+                            // No manual routing needed here anymore - as soon
+                            // as login completes, session.isLoggedIn flips to
+                            // true, this composable recomposes, and the
+                            // top-level branches above take over (pin-setup
+                            // branch first if localCredential is still null).
                         },
                         onCreateBusiness = {
                             pendingOwnerPhone = session?.phoneNumberE164
@@ -168,12 +189,13 @@ fun AuthNavGate(
                         onBusinessCreated = { businessId ->
                             // saveBusinessMembership already happened inside sign-up's
                             // Firestore write; mirror it into the session store here.
+                            // No manual pin-setup routing needed - same reasoning
+                            // as onLoggedIn above.
                             scope.launch {
                                 sessionManager.saveBusinessMembership(
                                     businessId,
                                     MemberRole.OWNER
                                 )
-                                pendingPinSetup = businessId to MemberRole.OWNER
                             }
                         }
                     )
