@@ -8,6 +8,8 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.room.withTransaction
 import androidx.sqlite.db.SupportSQLiteDatabase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.vestateck.smetracker.data.dao.DebtDao
 import com.vestateck.smetracker.data.dao.InventoryDao
 import com.vestateck.smetracker.data.dao.LocalCredentialDao
@@ -69,6 +71,19 @@ abstract class SMEDatabase : RoomDatabase() {
             inventoryDao().deleteSyncedAdjustments()
         }
     }
+
+    // Full wipe of every local table - used once, the very first time a
+    // device links to a business (see SessionManager.saveBusinessMembership()),
+    // to discard any local Room data that predates that link: leftover
+    // dev/test rows, or anything recorded before Firebase Auth was wired up.
+    // Unlike clearSyncedDataSuspending() above, this isn't pendingSync-aware -
+    // none of that data can be pendingSync for a business relationship that
+    // never existed, so there's nothing worth preserving here.
+    //
+    // RoomDatabase.clearAllTables() manages its own locking and must be
+    // called outside of a transaction - not wrapped in withTransaction like
+    // clearSyncedDataSuspending() above.
+    suspend fun clearAllTablesSuspending() = withContext(Dispatchers.IO) { clearAllTables() }
 
     companion object {
         @Volatile

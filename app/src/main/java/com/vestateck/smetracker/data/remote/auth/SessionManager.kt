@@ -8,11 +8,13 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.vestateck.smetracker.data.dao.LocalCredentialDao
+import com.vestateck.smetracker.data.database.SMEDatabase
 import com.vestateck.smetracker.data.entities.LocalCredential
 import com.vestateck.smetracker.data.remote.model.MemberRole
 import com.vestateck.smetracker.utils.PinHasher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 
@@ -48,7 +50,8 @@ private object Keys {
 
 class SessionManager(
     private val context: Context,
-    private val localCredentialDao: LocalCredentialDao
+    private val localCredentialDao: LocalCredentialDao,
+    private val database: SMEDatabase
 ) {
 
     val sessionState: Flow<SessionState> = context.sessionDataStore.data
@@ -82,8 +85,29 @@ class SessionManager(
         }
     }
 
-    /** Called once phoneIndex lookup resolves (post sign-in or post sign-up). */
+    /**
+     * Called once phoneIndex lookup resolves (post sign-in or post sign-up).
+     *
+     * deviceBusinessId stays null until this device has completed a full
+     * link for SOME business (see its doc comment above - it's only set
+     * once PIN setup finishes, right after this). So null here means this
+     * is that device's first-ever business link, and any local Room data
+     * already sitting there predates a legitimate business relationship on
+     * this device - leftover dev/test rows, or anything recorded before
+     * Firebase Auth was wired up. Must be discarded before SyncEngine can
+     * start (see MainActivity's onEnterApp -> syncEngine.start()), or
+     * pushAllPending() would upload it into whatever business is being
+     * linked now. See SMEDatabase.clearAllTablesSuspending() doc.
+     *
+     * A device being reassigned to a NEW business after a normal sign-out
+     * from a PREVIOUS one doesn't hit this branch (deviceBusinessId is
+     * already set) - that's a separate, already-accepted tradeoff, see
+     * SMEDatabase.clearSyncedDataSuspending()'s doc comment.
+     */
     suspend fun saveBusinessMembership(businessId: String, role: MemberRole) {
+        if (deviceBusinessId.first() == null) {
+            database.clearAllTablesSuspending()
+        }
         context.sessionDataStore.edit { prefs ->
             prefs[Keys.BUSINESS_ID] = businessId
             prefs[Keys.ROLE] = role.name.lowercase()

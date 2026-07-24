@@ -6,6 +6,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.vestateck.smetracker.data.dao.InventoryDao
 import com.vestateck.smetracker.data.dao.LocalCredentialDao
 import com.vestateck.smetracker.data.dao.SMEDao
+import com.vestateck.smetracker.data.database.SMEDatabase
 import com.vestateck.smetracker.data.remote.auth.AuthRepository
 import com.vestateck.smetracker.data.remote.auth.BusinessRepository
 import com.vestateck.smetracker.data.remote.auth.SessionManager
@@ -55,9 +56,10 @@ object RepositoryModule {
     @Singleton
     fun provideSessionManager(
         @ApplicationContext context: Context,
-        localCredentialDao: LocalCredentialDao
+        localCredentialDao: LocalCredentialDao,
+        database: SMEDatabase
     ): SessionManager =
-        SessionManager(context, localCredentialDao)
+        SessionManager(context, localCredentialDao, database)
 
     @Provides
     @Singleton
