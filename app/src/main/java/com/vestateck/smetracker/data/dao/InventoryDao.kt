@@ -13,6 +13,14 @@ interface InventoryDao {
     @Query("SELECT * FROM inventory_items WHERE id = :itemId")
     suspend fun getItemById(itemId: String): InventoryItem?
 
+    // Scan-to-add lookup (see AddSaleScreen's BarcodeScanField). Excludes
+    // deleted items and, since sku isn't unique (see InventoryItem's doc
+    // comment), takes the most recently updated match if more than one item
+    // somehow shares a code - LIMIT 1 rather than crashing on an ambiguous
+    // result.
+    @Query("SELECT * FROM inventory_items WHERE isDeleted = 0 AND sku = :sku ORDER BY updatedAt DESC LIMIT 1")
+    suspend fun getItemBySku(sku: String): InventoryItem?
+
     @Query("SELECT * FROM inventory_items WHERE isDeleted = 0 AND quantity <= :threshold ORDER BY quantity ASC")
     fun getLowStockItems(threshold: Int): Flow<List<InventoryItem>>
 

@@ -77,6 +77,7 @@ fun AddSaleScreen(viewModel: SMEViewModel, navController: NavController) {
     var paymentExpanded by remember { mutableStateOf(false) }
 
     val lineItems = remember { mutableStateListOf(SaleLineItem()) }
+    var scanMessage by remember { mutableStateOf<String?>(null) }
 
     fun updateLine(index: Int, updated: SaleLineItem) {
         lineItems[index] = updated
@@ -101,6 +102,44 @@ fun AddSaleScreen(viewModel: SMEViewModel, navController: NavController) {
         val qty = line.quantityInput.toIntOrNull() ?: 0
         val hasProduct = line.selectedItem != null || line.description.isNotBlank()
         return hasProduct && amt > 0 && qty > 0 && !lineExceedsStock(line)
+    }
+
+    // Scan-to-add: same "one line per item, bump quantity instead of a
+    // second line" rule as picking the same item twice from the dropdown
+    // (see itemAlreadyUsedElsewhere above).
+    fun handleScan(code: String) {
+        val match = inventoryItems.find { it.sku == code }
+        if (match == null) {
+            scanMessage = "No item matches code \"$code\""
+            return
+        }
+        val existingIndex = lineItems.indexOfFirst { it.selectedItem?.id == match.id }
+        if (existingIndex >= 0) {
+            val line = lineItems[existingIndex]
+            val newQty = (line.quantityInput.toIntOrNull() ?: 0) + 1
+            if (newQty > match.quantity) {
+                scanMessage = "Only ${match.quantity} of \"${match.name}\" in stock"
+                return
+            }
+            val amount = if (!line.amountManuallyEdited) suggestedAmount(match, newQty) else line.amount
+            updateLine(existingIndex, line.copy(quantityInput = newQty.toString(), amount = amount))
+        } else {
+            if (match.quantity <= 0) {
+                scanMessage = "\"${match.name}\" is out of stock"
+                return
+            }
+            val newLine = SaleLineItem(
+                selectedItem = match,
+                description = match.name,
+                quantityInput = "1",
+                amount = suggestedAmount(match, 1)
+            )
+            // Fill a still-blank line (e.g. the screen's default first row)
+            // instead of piling on an extra one.
+            val emptyIndex = lineItems.indexOfFirst { it.selectedItem == null && it.description.isBlank() }
+            if (emptyIndex >= 0) updateLine(emptyIndex, newLine) else lineItems.add(newLine)
+        }
+        scanMessage = "Added \"${match.name}\""
     }
 
     val totalAmount = lineItems.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
@@ -203,6 +242,21 @@ fun AddSaleScreen(viewModel: SMEViewModel, navController: NavController) {
             }
 
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
+
+            // ── Scan to add ───────────────────────────────────────────
+            BarcodeScanField(
+                label = "Scan barcode",
+                modifier = Modifier.fillMaxWidth(),
+                onScan = { code -> handleScan(code) }
+            )
+            scanMessage?.let { message ->
+                Text(
+                    message,
+                    fontSize = 12.sp,
+                    color = if (message.startsWith("Added")) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.error
+                )
+            }
 
             // ── Products (repeatable line items) ─────────────────────
             Text("Products", fontWeight = FontWeight.Bold)

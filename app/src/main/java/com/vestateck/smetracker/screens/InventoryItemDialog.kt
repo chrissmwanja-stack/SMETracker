@@ -40,6 +40,7 @@ internal fun InventoryItemDialog(
 ) {
     var name by remember { mutableStateOf(item?.name ?: "") }
     var category by remember { mutableStateOf(item?.category ?: "") }
+    var sku by remember { mutableStateOf(item?.sku ?: "") }
     // Quantity is only a free-typed field when creating a brand-new item (no
     // sale history to protect yet). Editing an EXISTING item never lets
     // anyone — owner or worker — type a new quantity here: that was the
@@ -125,6 +126,26 @@ internal fun InventoryItemDialog(
                 }
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Item Name") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = category, onValueChange = { category = it }, label = { Text("Category") }, modifier = Modifier.fillMaxWidth())
+                // Optional: assign a barcode by scanning it here (same
+                // scanner used at checkout), or type one in by hand. Blank
+                // is fine - the item still works via the normal picker.
+                if (sku.isBlank()) {
+                    BarcodeScanField(
+                        label = "Barcode / SKU (optional)",
+                        modifier = Modifier.fillMaxWidth(),
+                        onScan = { code -> sku = code }
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = sku,
+                        onValueChange = { sku = it },
+                        label = { Text("Barcode / SKU") },
+                        trailingIcon = {
+                            TextButton(onClick = { sku = "" }) { Text("Clear") }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (isNewItem) {
                         OutlinedTextField(value = quantity, onValueChange = { quantity = it }, label = { Text("Initial Qty") }, modifier = Modifier.weight(1f), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
@@ -172,7 +193,8 @@ internal fun InventoryItemDialog(
                                     costReconciled = item?.costReconciled ?: true,
                                     localImagePath = localImagePath,
                                     imageUrl = imageUrl,
-                                    imagePendingUpload = imagePendingUpload
+                                    imagePendingUpload = imagePendingUpload,
+                                    sku = sku.trim().ifBlank { null }
                                 )
                             )
                         }) { Text("Save") }

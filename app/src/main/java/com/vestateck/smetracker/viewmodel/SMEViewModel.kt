@@ -232,7 +232,8 @@ class SMEViewModel @Inject constructor(
         // now offers the same picker, so a photo taken here needs the same
         // two fields to make it into InventorySync.pushPending's upload step.
         localImagePath: String? = null,
-        imagePendingUpload: Boolean = false
+        imagePendingUpload: Boolean = false,
+        sku: String? = null
     ) = viewModelScope.launch {
         val (myPhone, isOwner) = currentSession()
         val newItem = InventoryItem(
@@ -245,7 +246,8 @@ class SMEViewModel @Inject constructor(
             recordedBy = myPhone,
             costReconciled = isOwner,
             localImagePath = localImagePath,
-            imagePendingUpload = imagePendingUpload
+            imagePendingUpload = imagePendingUpload,
+            sku = sku
         )
         repository.insertInventoryItem(newItem)
         repository.logInitialStock(newItem.id, newItem.quantity, myPhone)
@@ -276,7 +278,8 @@ class SMEViewModel @Inject constructor(
                 costPrice = cost,
                 reorderLevel = row.reorderLevel,
                 recordedBy = myPhone,
-                costReconciled = reconciled
+                costReconciled = reconciled,
+                sku = row.sku
             )
         }
         repository.insertInventoryItems(items)

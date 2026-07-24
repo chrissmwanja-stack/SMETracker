@@ -108,8 +108,8 @@ fun BulkAddInventoryScreen(viewModel: SMEViewModel, navController: NavController
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("How it works", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         Text(
-                            "Upload a CSV with columns: name, category, quantity, sellingPrice, costPrice, reorderLevel. " +
-                                    "name, quantity and sellingPrice are required" +
+                            "Upload a CSV with columns: name, category, quantity, sellingPrice, costPrice, reorderLevel, sku. " +
+                                    "name, quantity and sellingPrice are required — sku is optional, for barcode scan-to-add at checkout" +
                                     if (isOwner) " — leave costPrice blank on any row and it'll show up in Reconciliation later, same as adding one item by hand."
                                     else ".",
                             fontSize = 13.sp,

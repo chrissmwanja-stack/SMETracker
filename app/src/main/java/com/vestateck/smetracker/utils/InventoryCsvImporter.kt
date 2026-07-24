@@ -35,15 +35,19 @@ object InventoryCsvImporter {
     private const val COL_SELLING_PRICE = "sellingprice"
     private const val COL_COST_PRICE = "costprice"
     private const val COL_REORDER_LEVEL = "reorderlevel"
+    // Optional — a blank cell or a column missing entirely (older
+    // templates saved before this existed) both just mean "no code
+    // assigned yet", same as leaving it blank in InventoryItemDialog.
+    private const val COL_SKU = "sku"
 
     private val REQUIRED = listOf(COL_NAME, COL_QUANTITY, COL_SELLING_PRICE)
 
     // Shown to the user as a copyable starting point. costPrice left blank
     // on one row deliberately, to model "optional — reconcile later".
     fun templateCsv(): String =
-        "name,category,quantity,sellingPrice,costPrice,reorderLevel\n" +
-                "Kitenge Fabric (6yd),Fabrics,20,45000,32000,5\n" +
-                "Assorted Buttons,Accessories,150,500,,10\n"
+        "name,category,quantity,sellingPrice,costPrice,reorderLevel,sku\n" +
+                "Kitenge Fabric (6yd),Fabrics,20,45000,32000,5,\n" +
+                "Assorted Buttons,Accessories,150,500,,10,\n"
 
     fun parse(csvText: String): BulkInventoryParseResult {
         val rows = CsvParser.parse(csvText)
@@ -113,6 +117,8 @@ object InventoryCsvImporter {
                 return@forEachIndexed
             }
 
+            val sku = cell(COL_SKU).ifBlank { null }
+
             val nameKey = name.lowercase()
             firstSeenAtRow[nameKey]?.let { firstRow ->
                 duplicateWarnings.add(
@@ -127,7 +133,8 @@ object InventoryCsvImporter {
                     quantity = quantity,
                     sellingPrice = sellingPrice,
                     costPrice = costPrice,
-                    reorderLevel = reorderLevel
+                    reorderLevel = reorderLevel,
+                    sku = sku
                 )
             )
         }

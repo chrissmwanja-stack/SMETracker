@@ -23,5 +23,7 @@ data class RemoteInventoryItem(
     // upload step and InventoryItem's doc comment for why this is separate
     // from the local device's cached copy.
     val imageUrl: String = "",
+    // Barcode/SKU, blank meaning none assigned. See InventoryItem.sku.
+    val sku: String = "",
     val isDeleted: Boolean = false
 )

@@ -3,10 +3,14 @@ package com.vestateck.smetracker.data.entities
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.vestateck.smetracker.utils.IdGenerator
 
-@Entity(tableName = "inventory_items")
+@Entity(
+    tableName = "inventory_items",
+    indices = [Index(value = ["sku"])]
+)
 data class InventoryItem(
     @PrimaryKey val id: String = IdGenerator.newId(),
     val name: String,
@@ -44,6 +48,7 @@ data class InventoryItem(
     //     localImagePath is null.
     val localImagePath: String? = null,
     val imageUrl: String? = null,
+    val sku: String? = null,
     // True from the moment a new local photo is picked until InventorySync
     // has successfully uploaded it and recorded the resulting imageUrl —
     // mirrors pendingSync but specifically for the upload half, since a

@@ -26,6 +26,11 @@ class FakeInventoryDao : InventoryDao {
     override suspend fun getItemById(itemId: String): InventoryItem? =
         itemsFlow.value.find { it.id == itemId && !it.isDeleted }
 
+    override suspend fun getItemBySku(sku: String): InventoryItem? =
+        itemsFlow.value.filter { !it.isDeleted && it.sku == sku }
+            .sortedByDescending { it.updatedAt }
+            .firstOrNull()
+
     override fun getLowStockItems(threshold: Int): Flow<List<InventoryItem>> =
         itemsFlow.map { list -> list.filter { !it.isDeleted && it.quantity <= threshold } }
 

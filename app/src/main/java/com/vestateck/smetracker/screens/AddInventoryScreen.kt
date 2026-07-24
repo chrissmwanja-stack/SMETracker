@@ -40,6 +40,7 @@ fun AddInventoryScreen(viewModel: SMEViewModel, navController: NavController, is
     var costPrice by remember { mutableStateOf("") }       // ← NEW: what you paid per unit
     var sellingPrice by remember { mutableStateOf("") }   // ← was "unitPrice"
     var category by remember { mutableStateOf("") }
+    var sku by remember { mutableStateOf("") }
     var minStockLevel by remember { mutableStateOf("5") }
     var showError by remember { mutableStateOf(false) }
 
@@ -245,6 +246,26 @@ fun AddInventoryScreen(viewModel: SMEViewModel, navController: NavController, is
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
             )
 
+            // Barcode / SKU - assign by scanning the product now, or leave
+            // blank and add one later via the item's edit dialog.
+            if (sku.isBlank()) {
+                BarcodeScanField(
+                    label = "Barcode / SKU (optional)",
+                    modifier = Modifier.fillMaxWidth(),
+                    onScan = { code -> sku = code }
+                )
+            } else {
+                OutlinedTextField(
+                    value = sku,
+                    onValueChange = { sku = it },
+                    label = { Text("Barcode / SKU") },
+                    trailingIcon = {
+                        TextButton(onClick = { sku = "" }) { Text("Clear") }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
             // Min Stock Level
             OutlinedTextField(
                 value = minStockLevel,
@@ -284,7 +305,8 @@ fun AddInventoryScreen(viewModel: SMEViewModel, navController: NavController, is
                             category = category,
                             reorderLevel = minStock,
                             localImagePath = localImagePath,
-                            imagePendingUpload = localImagePath != null
+                            imagePendingUpload = localImagePath != null,
+                            sku = sku.trim().ifBlank { null }
                         )
                         navController.popBackStack()
                     }

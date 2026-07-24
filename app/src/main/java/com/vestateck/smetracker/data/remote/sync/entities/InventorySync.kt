@@ -90,6 +90,7 @@ class InventorySync(
                                     // ahead of that upload's push shouldn't make
                                     // pushPending think there's nothing left to do.
                                     imagePendingUpload = existing?.imagePendingUpload ?: false,
+                                    sku = remote.sku.ifBlank { null },
                                     pendingSync = false,
                                     isDeleted = remote.isDeleted
                                 )
@@ -172,6 +173,7 @@ class InventorySync(
                             // brand-new local-only row.
                             recordedBy = item.recordedBy.ifBlank { myPhone },
                             imageUrl = imageUrl,
+                            sku = item.sku ?: "",
                             isDeleted = item.isDeleted
                         )
                     ).await()
