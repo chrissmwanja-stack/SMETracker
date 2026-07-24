@@ -1,6 +1,5 @@
 package com.vestateck.smetracker.ui.auth
 
-import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,7 +43,6 @@ import com.vestateck.smetracker.data.remote.model.MemberRole
  */
 @Composable
 fun AuthNavGate(
-    context: Context,
     authViewModel: AuthViewModel,
     sessionManager: SessionManager,
     businessRepository: BusinessRepository,
@@ -63,6 +61,7 @@ fun AuthNavGate(
     var pinError by remember { mutableStateOf<String?>(null) }
     var verifyingPin by remember { mutableStateOf(false) }
     var pinSetupSkipped by remember { mutableStateOf(false) }
+    var sessionExpired by remember { mutableStateOf(false) }
 
     // Re-check localCredential whenever deviceBusinessId OR the logged-in
     // business changes - covers both "new device, known business" and
@@ -82,6 +81,17 @@ fun AuthNavGate(
     LaunchedEffect(session?.businessId) {
         pinSetupSkipped = false
     }
+
+    // A saved local PIN credential is only a legitimate shortcut if
+    // Firebase Auth's own persisted session is still alive underneath it
+    // (e.g. app was killed/backgrounded, then relaunched) - checked below via
+    // authViewModel.hasLiveFirebaseSession(). clearSession() (a normal
+    // sign-out) deliberately leaves DEVICE_BUSINESS_ID and the
+    // local_credentials row in place so PIN entry keeps working across
+    // kills/backgrounding - but that also means a *genuine* sign-out (which
+    // does kill the real Firebase Auth session via authRepository.signOut())
+    // leaves this device holding a PIN credential with nothing real behind
+    // it. See the two localCredential branches below.
 
     when {
         session == null || !credentialChecked -> {
@@ -127,10 +137,14 @@ fun AuthNavGate(
             onEnterApp(session!!.businessId!!, session!!.role!!)
         }
 
-        // Not "logged in" this session (e.g. fresh app launch, or after a
-        // normal sign-out), but this device already has an offline PIN saved
-        // for some business - offer PIN entry instead of forcing OTP.
-        localCredential != null -> {
+        // Not "logged in" this session (e.g. fresh app launch after being
+        // killed/backgrounded), but this device already has an offline PIN
+        // saved for some business AND Firebase Auth's own session is still
+        // alive underneath - offer PIN entry instead of forcing OTP. This is
+        // the legitimate shortcut case: PIN entry only restores *local*
+        // session state, so it's only safe when the real Firebase session
+        // it's standing in for hasn't actually gone away.
+        localCredential != null && authViewModel.hasLiveFirebaseSession() -> {
             val cred = localCredential!!
             PinEntryScreen(
                 phoneNumberE164 = cred.phoneNumberE164,
@@ -161,6 +175,27 @@ fun AuthNavGate(
             )
         }
 
+        // A local PIN credential exists, but Firebase Auth has no live
+        // session - this means a genuine sign-out happened at some point.
+        // clearSession() deliberately keeps the local credential around (see
+        // its doc comment) to support the branch above, but here that
+        // credential is stale: entering the PIN would only ever restore
+        // local DataStore state, never real Firestore access, and every
+        // subsequent live read/write (including all of SyncEngine) would
+        // silently fail with PERMISSION_DENIED. Forget the stale credential
+        // and fall through to a full OTP login instead of offering a PIN
+        // screen that can't actually work.
+        localCredential != null -> {
+            LaunchedEffect(localCredential) {
+                sessionManager.forgetDeviceCredential(localCredential!!.businessId)
+                localCredential = null
+                sessionExpired = true
+            }
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        }
+
         else -> {
             // Not logged in, or logged in but never completed business setup.
             var pendingOwnerPhone by remember { mutableStateOf<String?>(null) }
@@ -169,14 +204,19 @@ fun AuthNavGate(
                 pendingOwnerPhone == null -> {
                     LoginScreen(
                         viewModel = authViewModel,
+                        sessionExpiredMessage = if (sessionExpired) {
+                            "You were signed out on this device. Please sign in again to continue."
+                        } else null,
                         onLoggedIn = { _, _ ->
                             // No manual routing needed here anymore - as soon
                             // as login completes, session.isLoggedIn flips to
                             // true, this composable recomposes, and the
                             // top-level branches above take over (pin-setup
                             // branch first if localCredential is still null).
+                            sessionExpired = false
                         },
                         onCreateBusiness = {
+                            sessionExpired = false
                             pendingOwnerPhone = session?.phoneNumberE164
                         }
                     )

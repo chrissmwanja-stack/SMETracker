@@ -97,7 +97,6 @@ class MainActivity : ComponentActivity() {
                     val currentEntry = entered
                     if (currentEntry == null) {
                         AuthNavGate(
-                            context = applicationContext,
                             authViewModel = authViewModel,
                             sessionManager = sessionManager,
                             businessRepository = businessRepository,

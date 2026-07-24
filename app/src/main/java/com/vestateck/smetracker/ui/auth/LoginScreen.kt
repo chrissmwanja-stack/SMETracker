@@ -24,7 +24,8 @@ import com.vestateck.smetracker.data.remote.model.MemberRole
 fun LoginScreen(
     viewModel: AuthViewModel,
     onLoggedIn: (businessId: String, role: MemberRole) -> Unit,
-    onCreateBusiness: () -> Unit
+    onCreateBusiness: () -> Unit,
+    sessionExpiredMessage: String? = null
 ) {
     val state by viewModel.screenState.collectAsState()
     val context = LocalContext.current
@@ -50,11 +51,30 @@ fun LoginScreen(
             contentAlignment = Alignment.Center
         ) {
             when (val s = state) {
-                is AuthScreenState.EnterPhone -> PhoneEntryContent(
-                    onSubmit = { phone ->
-                        activity?.let { viewModel.sendOtp(phone, it) }
+                is AuthScreenState.EnterPhone -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    if (sessionExpiredMessage != null) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 20.dp)
+                        ) {
+                            Text(
+                                sessionExpiredMessage,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
                     }
-                )
+                    PhoneEntryContent(
+                        onSubmit = { phone ->
+                            activity?.let { viewModel.sendOtp(phone, it) }
+                        }
+                    )
+                }
 
                 is AuthScreenState.Verifying -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator()

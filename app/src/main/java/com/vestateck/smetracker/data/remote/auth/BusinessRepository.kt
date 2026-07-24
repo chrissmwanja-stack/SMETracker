@@ -116,7 +116,10 @@ class BusinessRepository(
                     )
                 ).await()
             } catch (e: Exception) {
-                // Non-fatal — log this in real usage so it can be backfilled.
+                // Non-fatal — account is fully functional without this row
+                // (see class doc above), but log it so a missing member
+                // entry can actually be traced and backfilled later.
+                Log.w(TAG, "createBusinessWithOwner($businessId): members write failed, account still usable", e)
             }
 
             Result.success(businessId)
@@ -194,6 +197,11 @@ class BusinessRepository(
             // so a denial reaching here is almost certainly the worker's
             // phone already being registered elsewhere (rules deny the
             // phoneIndex create because a doc already exists at that path).
+            // Logged before wrapping - the friendly message below is only
+            // ever a best guess at the cause, not a certainty (a network
+            // drop or a dead Firebase session mid-transaction would land
+            // here too), so the real exception needs to survive somewhere.
+            Log.e(TAG, "addWorker(businessId=$businessId, worker=$workerPhoneE164) failed", e)
             Result.failure(
                 Exception(
                     "Could not add worker. That phone number is already registered " +
@@ -255,7 +263,12 @@ class BusinessRepository(
             // trace of why — e.g. PERMISSION_DENIED (rules) vs. a
             // deserialization failure (bad field type) look identical to
             // the caller without this. Surface it.
-            Log.e(TAG, "getBusiness($businessId) failed", e)
+            Log.e(
+                TAG,
+                "getBusiness($businessId) failed - current auth phone=" +
+                        "${auth.currentUser?.phoneNumber}, auth uid=${auth.currentUser?.uid}",
+                e
+            )
             Result.failure(e)
         }
     }

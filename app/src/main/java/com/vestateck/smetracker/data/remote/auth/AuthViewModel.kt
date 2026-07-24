@@ -143,6 +143,12 @@ class AuthViewModel @Inject constructor(
         _screenState.value = AuthScreenState.EnterPhone
     }
 
+    /**
+     * Checks if Firebase Auth has a persistent session (the currentUser is
+     * non-null), which is required for any PIN shortcut to be valid.
+     */
+    fun hasLiveFirebaseSession(): Boolean = authRepository.isLoggedIn
+
     /** Used right after LoggedIn fires, to tag a new offline-PIN credential row. See AuthNavGate. */
     fun currentFirebaseUid(): String? = authRepository.currentUid
 
