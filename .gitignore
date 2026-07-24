@@ -23,5 +23,5 @@ app/keystore.properties
 *.keystore
 firebase-debug.log
 firestore-debug.log
-sme_tracker_v*.db
+sme_tracker_*.db
 check_db.py
