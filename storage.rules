@@ -54,15 +54,39 @@ service firebase.storage {
     }
 
     // Expenses are read-restricted in Firestore (workers see only their own),
-    // but Storage rules can't see the doc's recordedBy field cheaply without
-    // an extra firestore.get() per read - mirroring that exactly would need
-    // the receipt's owning expense doc looked up here too. Scoping to
-    // business membership (not per-expense owner) is the practical tradeoff:
-    // any member of the business can read any receipt image in it, same as
-    // inventory photos. Tighten further only if receipt confidentiality
-    // between workers becomes a real requirement.
+    // so this mirrors that exactly via a firestore.get() on the receipt's
+    // owning expense doc. That lookup only runs for the worker branch below -
+    // rules evaluate `||` with short-circuit, so an owner's read never pays
+    // for it, and a worker's is one extra doc read per receipt view.
+    //
+    // The doc is guaranteed to exist by the time this rule runs: the upload
+    // in ExpenseSync.pushPending finishes before the Firestore expense write
+    // (see that function), and receiptUrl only reaches Room - and therefore
+    // only gets requested by AsyncImage - once the corresponding expense doc
+    // has synced down with its recordedBy field already set. Soft deletes
+    // (isDeleted) don't remove the doc either, so this holds even for a
+    // deleted expense's receipt.
     match /businesses/{businessId}/expense_receipts/{expenseId} {
-      allow read: if isMemberOf(businessId);
+      // expenseId here is the full storage object name, e.g.
+      // "abc123.jpg" - ExpenseSync.pushPending always appends ".jpg", so
+      // stripping the last 4 characters recovers the actual Firestore
+      // expense document ID.
+      function expenseRecordedBy() {
+        let docId = expenseId[0:expenseId.size() - 4];
+        return firestore.get(
+          /databases/(default)/documents/businesses/$(businessId)/expenses/$(docId)
+        ).data.recordedBy;
+      }
+
+      allow read: if isOwnerOf(businessId)
+        || (isMemberOf(businessId) && expenseRecordedBy() == myPhone());
+
+      // Write stays member-scoped rather than owner-matched: the receipt
+      // upload happens BEFORE the Firestore expense doc is written (see
+      // ExpenseSync.pushPending), so there's no recordedBy to check yet at
+      // upload time - the doc write immediately after is what actually
+      // establishes ownership, and Firestore's own create rule already
+      // requires that doc's recordedBy to equal the uploader's phone.
       allow write: if isMemberOf(businessId) && isValidImage();
       allow delete: if isOwnerOf(businessId);
     }
