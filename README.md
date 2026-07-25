@@ -31,7 +31,35 @@ Android app for small business inventory, sales, debt, and expense tracking, bui
    ./gradlew lintDebug
    ```
 
-CI (`.github/workflows/android-ci.yml`) runs lint, unit tests, and a debug build on every push/PR to `main`, and uploads the lint report and debug APK as run artifacts.
+CI (`.github/workflows/android-ci.yml`) runs lint, unit tests, and a debug build on every push/PR to `main`, and uploads the lint report and debug APK as run artifacts. Release lint/build are not run in CI, since they require a signing config CI doesn't have — see **Release signing** below for testing that path locally.
+
+## Release signing
+
+Release builds (`isMinifyEnabled = true`, `isShrinkResources = true`) are signed using a config read from `app/keystore.properties`, which is gitignored and never committed. Without that file, `assembleRelease` still succeeds but produces an **unsigned** APK (this is what CI would get if it ever ran `assembleRelease`, which is why CI only builds `debug`).
+
+1. **Generate the upload keystore once** (keep it forever — Play Store uploads require the same upload key for the life of the app; if it's lost, there's no way to publish updates to the existing listing again):
+   ```
+   keytool -genkeypair -v -keystore smetracker-upload.jks \
+     -alias smetracker -keyalg RSA -keysize 2048 -validity 10000
+   ```
+   Back it up somewhere off-machine (cloud storage, password manager, etc.) along with its passwords — losing it is unrecoverable.
+
+2. **Wire it up locally:**
+   ```
+   cp app/keystore.properties.example app/keystore.properties
+   ```
+   Then edit `app/keystore.properties` with the real `storeFile` (path relative to `app/`), `storePassword`, `keyAlias`, and `keyPassword`.
+
+3. **Build and verify:**
+   ```
+   ./gradlew assembleRelease --stacktrace
+   ./gradlew lintRelease --stacktrace
+   ```
+   Then confirm the signature with `apksigner` (ships in the Android SDK's `build-tools/<version>/` folder, not on PATH by default):
+   ```
+   apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk
+   ```
+   This prints the signer certificate's SHA-256 fingerprint — save it, and cross-check it against what Play Console shows on first upload to confirm you're signing with the key you think you are.
 
 ## Architecture
 
