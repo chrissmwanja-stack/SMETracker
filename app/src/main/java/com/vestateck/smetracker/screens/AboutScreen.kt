@@ -4,6 +4,7 @@ package com.vestateck.smetracker.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Storefront
@@ -12,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -93,12 +95,25 @@ fun AboutScreen(onBack: () -> Unit) {
                 onClick = { AppLinks.openUrl(context, "mailto:${AppLinks.SUPPORT_EMAIL}") }
             )
             HorizontalDivider()
+            AboutLinkRow(
+                icon = Icons.Default.DeleteForever,
+                label = "Delete account",
+                onClick = { AppLinks.openUrl(context, AppLinks.ACCOUNT_DELETION_URL) },
+                tint = MaterialTheme.colorScheme.error
+            )
+            HorizontalDivider()
         }
     }
 }
 
 @Composable
-private fun AboutLinkRow(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun AboutLinkRow(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    tint: Color? = null
+) {
+    val iconTint = tint ?: MaterialTheme.colorScheme.onSurfaceVariant
     Surface(onClick = onClick, color = MaterialTheme.colorScheme.surface) {
         Row(
             modifier = Modifier
@@ -106,9 +121,14 @@ private fun AboutLinkRow(icon: ImageVector, label: String, onClick: () -> Unit) 
                 .padding(vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(icon, contentDescription = null, tint = iconTint)
             Spacer(Modifier.width(16.dp))
-            Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = tint ?: Color.Unspecified,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
