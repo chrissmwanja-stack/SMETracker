@@ -12,8 +12,14 @@ import com.vestateck.smetracker.data.remote.model.Business
 import com.vestateck.smetracker.data.remote.sync.SyncEngine
 import com.vestateck.smetracker.repository.SMERepository
 import com.vestateck.smetracker.utils.BulkInventoryRow
-import com.vestateck.smetracker.utils.IdGenerator
 import com.vestateck.smetracker.utils.TimeUtils
+import com.vestateck.smetracker.viewmodel.actions.CustomerActions
+import com.vestateck.smetracker.viewmodel.actions.DebtActions
+import com.vestateck.smetracker.viewmodel.actions.ExpenseActions
+import com.vestateck.smetracker.viewmodel.actions.InventoryActions
+import com.vestateck.smetracker.viewmodel.actions.ReconciliationActions
+import com.vestateck.smetracker.viewmodel.actions.SaleActions
+import com.vestateck.smetracker.viewmodel.actions.TaskActions
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -157,67 +163,41 @@ class SMEViewModel @Inject constructor(
             initialValue = DashboardUiState()
         )
 
-    // Customer Actions
+    // Customer Actions - delegated to CustomerActions (Option A restructuring).
+    private val customerActions = CustomerActions(repository, syncEngine)
+
     fun insertCustomer(customer: Customer) = viewModelScope.launch {
-        repository.insertCustomer(customer)
-        syncEngine?.requestPush()
+        customerActions.insertCustomer(customer)
     }
 
     fun addCustomer(name: String, phone: String = "", email: String = "") = viewModelScope.launch {
-        repository.insertCustomer(Customer(name = name, phone = phone, email = email))
-        syncEngine?.requestPush()
+        customerActions.addCustomer(name, phone, email)
     }
 
-    // Callers that already have a persisted Customer (blank id would mean "not yet
-    // saved") go to update; a blank id means the id needs generating on first insert.
     fun upsertCustomer(customer: Customer) = viewModelScope.launch {
-        if (customer.id.isBlank()) {
-            repository.insertCustomer(customer.copy(id = IdGenerator.newId()))
-        } else {
-            repository.updateCustomer(customer)
-        }
-        syncEngine?.requestPush()
+        customerActions.upsertCustomer(customer)
     }
 
     fun deleteCustomer(customer: Customer) = viewModelScope.launch {
-        repository.deleteCustomer(customer)
-        syncEngine?.requestPush()
+        customerActions.deleteCustomer(customer)
     }
 
-    // Debt Actions
+    // Debt Actions - delegated to DebtActions (Option A restructuring).
+    private val debtActions = DebtActions(repository, syncEngine)
+
     fun insertDebt(debt: Debt) = viewModelScope.launch {
-        repository.insertDebt(debt)
-        syncEngine?.requestPush()
+        debtActions.insertDebt(debt)
     }
 
     fun markDebtAsPaid(debtId: String) = viewModelScope.launch {
-        repository.markDebtPaid(debtId)
-        syncEngine?.requestPush()
+        debtActions.markDebtAsPaid(debtId)
     }
 
-    // Inventory Actions
-    // InventoryItemDialog is used for both Add and Edit; it passes a blank id
-    // for a brand-new item (mirroring the old id == 0L convention), so a fresh
-    // id is only generated here, at the moment we know it's really an insert.
+    // Inventory Actions - delegated to InventoryActions (Option A restructuring).
+    private val inventoryActions = InventoryActions(repository, syncEngine, ::currentSession)
+
     fun upsertInventoryItem(item: InventoryItem) = viewModelScope.launch {
-        if (item.id.isBlank()) {
-            val (myPhone, isOwner) = currentSession()
-            // A worker's Add dialog never shows a cost field (see
-            // InventoryItemDialog), so costPrice here is always the unset 0.0
-            // default for a worker - that's exactly the case that needs an
-            // owner's review. An owner creating the item already entered a
-            // real cost, so it's reconciled immediately.
-            val newItem = item.copy(id = IdGenerator.newId(), recordedBy = myPhone, costReconciled = isOwner)
-            repository.insertInventoryItem(newItem)
-            repository.logInitialStock(newItem.id, newItem.quantity, myPhone)
-        } else {
-            // Editing an existing item always goes through the owner-only
-            // cost field when isOwner (see InventoryItemDialog) - if this
-            // save came from an owner, treat it as having reviewed the cost.
-            val (_, isOwner) = currentSession()
-            repository.updateInventoryItem(if (isOwner) item.copy(costReconciled = true) else item)
-        }
-        syncEngine?.requestPush()
+        inventoryActions.upsertInventoryItem(item)
     }
 
     fun addInventoryItem(
@@ -227,90 +207,39 @@ class SMEViewModel @Inject constructor(
         category: String = "",
         costPrice: Double = 0.0,
         reorderLevel: Int = 5,
-        // Mirrors InventoryItemDialog's photo handling (see that file's doc
-        // comment on InventoryItem.localImagePath) - this quick-add screen
-        // now offers the same picker, so a photo taken here needs the same
-        // two fields to make it into InventorySync.pushPending's upload step.
         localImagePath: String? = null,
         imagePendingUpload: Boolean = false,
         sku: String? = null
     ) = viewModelScope.launch {
-        val (myPhone, isOwner) = currentSession()
-        val newItem = InventoryItem(
-            name = name,
-            quantity = quantity,
-            sellingPrice = sellingPrice,
-            category = category,
-            costPrice = costPrice,
-            reorderLevel = reorderLevel,
-            recordedBy = myPhone,
-            costReconciled = isOwner,
-            localImagePath = localImagePath,
-            imagePendingUpload = imagePendingUpload,
-            sku = sku
+        inventoryActions.addInventoryItem(
+            name, quantity, sellingPrice, category, costPrice, reorderLevel,
+            localImagePath, imagePendingUpload, sku
         )
-        repository.insertInventoryItem(newItem)
-        repository.logInitialStock(newItem.id, newItem.quantity, myPhone)
-        syncEngine?.requestPush()
     }
 
-    // Bulk counterpart to addInventoryItem, for CSV import (see
-    // BulkAddInventoryScreen / InventoryCsvImporter). One currentSession()
-    // call covers the whole batch, then a single insertAll + single
-    // requestPush - but each row still gets the exact same owner/cost
-    // gating addInventoryItem applies per item, so a bulk-imported item
-    // behaves identically to one added by hand:
-    //   - a worker's costPrice is never trusted, CSV cell or not (matches
-    //     AddInventoryScreen/InventoryItemDialog never showing that field
-    //     to a worker in the first place)
-    //   - an owner's row with no costPrice cell falls into the same
-    //     Reconciliation queue a worker-created item would.
     fun addInventoryItemsBulk(rows: List<BulkInventoryRow>) = viewModelScope.launch {
-        val (myPhone, isOwner) = currentSession()
-        val items = rows.map { row ->
-            val cost = if (isOwner) (row.costPrice ?: 0.0) else 0.0
-            val reconciled = isOwner && row.costPrice != null
-            InventoryItem(
-                name = row.name,
-                category = row.category,
-                quantity = row.quantity,
-                sellingPrice = row.sellingPrice,
-                costPrice = cost,
-                reorderLevel = row.reorderLevel,
-                recordedBy = myPhone,
-                costReconciled = reconciled,
-                sku = row.sku
-            )
-        }
-        repository.insertInventoryItems(items)
-        items.forEach { repository.logInitialStock(it.id, it.quantity, myPhone) }
-        syncEngine?.requestPush()
+        inventoryActions.addInventoryItemsBulk(rows)
     }
 
     fun deleteInventoryItem(item: InventoryItem) = viewModelScope.launch {
-        repository.deleteInventoryItem(item)
-        syncEngine?.requestPush()
+        inventoryActions.deleteInventoryItem(item)
     }
 
-    fun getAdjustmentsForItem(itemId: String) = repository.getAdjustmentsForItem(itemId)
+    fun getAdjustmentsForItem(itemId: String) = inventoryActions.getAdjustmentsForItem(itemId)
 
-    // Incoming Stock - additive-only, available to workers and owners alike.
     fun receiveStock(itemId: String, quantity: Int, note: String? = null) = viewModelScope.launch {
-        repository.receiveStock(itemId, quantity, note)
-        syncEngine?.requestPush()
+        inventoryActions.receiveStock(itemId, quantity, note)
     }
 
-    // Recount - owner-only correction after a physical count. The screen is
-    // responsible for only exposing this to an owner and for requiring a note;
-    // this function trusts its caller on both, same as the rest of this class.
     fun recountStock(itemId: String, newQuantity: Int, note: String) = viewModelScope.launch {
-        repository.recountStock(itemId, newQuantity, note)
-        syncEngine?.requestPush()
+        inventoryActions.recountStock(itemId, newQuantity, note)
     }
 
-    // Sale Actions
-    // For a custom/service sale not tied to tracked inventory (inventoryItemId = null), profit stays 0
-    // since there's no known cost basis. Pass an inventoryItemId to compute real profit and decrement stock.
+    // Sale Actions - delegated to SaleActions (Option A restructuring).
+    private val saleActions = SaleActions(
+        repository, syncEngine, ::currentSession, receiptNumberGenerator, inventoryItems
+    )
+
     fun addSale(
         customerName: String,
         description: String,
@@ -318,164 +247,31 @@ class SMEViewModel @Inject constructor(
         paymentMethod: PaymentMethod,
         inventoryItemId: String? = null,
         quantity: Int = 1,
-        // Set when the customer was picked from the saved-customers dropdown
-        // rather than typed as a one-off name - links this sale back to that
-        // Customer record. Null is a legitimate, common case (ad-hoc/walk-in
-        // sale with no saved customer), not an error.
         customerId: String? = null
     ) = viewModelScope.launch {
-        insertSale(customerName, description, amount, paymentMethod, inventoryItemId, quantity, customerId)
-        syncEngine?.requestPush()
+        saleActions.addSale(customerName, description, amount, paymentMethod, inventoryItemId, quantity, customerId)
     }
 
-    // Core of addSale, factored out so addSaleLines (below) can await each
-    // insert and hand the whole batch of created Sale rows back to its
-    // caller (e.g. AddSaleScreen, to build the post-save receipt - see
-    // ReceiptData.from). addSale's own public signature above stays
-    // fire-and-forget, unchanged for existing callers.
-    private suspend fun insertSale(
-        customerName: String,
-        description: String,
-        amount: Double,
-        paymentMethod: PaymentMethod,
-        inventoryItemId: String? = null,
-        quantity: Int = 1,
-        customerId: String? = null,
-        // One receipt number is meant to cover a whole checkout, not one
-        // product on it - see addSaleLines below, which claims a single
-        // number up front and passes the SAME string into every line's
-        // insertSale call. Null (addSale's plain single-item path) means
-        // "this call IS its own one-item checkout", so a fresh number is
-        // generated here instead.
-        provisionalReceiptNumber: String? = null
-    ): Sale? {
-        val soldItem = inventoryItemId?.let { id -> inventoryItems.value.find { it.id == id } }
-        // Defense-in-depth behind AddSaleScreen's own stock check: reject
-        // outright rather than silently clamping or partially applying if
-        // the requested quantity exceeds what's on hand, or if the item id
-        // no longer resolves (e.g. deleted between the screen reading it and
-        // this coroutine running). adjustStock has no floor of its own (see
-        // InventoryDao), so this is the only thing stopping a future caller
-        // that skips screen-level validation from pushing quantity negative.
-        if (inventoryItemId != null && (soldItem == null || quantity > soldItem.quantity)) {
-            return null
-        }
-        // Auto-apply the item's own cost price whenever it's already known
-        // (costReconciled && costPrice > 0) - that's the single source of
-        // truth for what this item costs (set once via the Inventory
-        // screen or the Reconciliation screen), so a sale against it
-        // shouldn't need a second, separate manual confirmation just to
-        // repeat the same number back. A genuine 0.0 doesn't count as
-        // "known" (mirrors SaleReconciliationDialog's own suggestion logic)
-        // since that's indistinguishable from the item's cost never having
-        // been set.
-        val itemCostKnown = soldItem != null && soldItem.costReconciled && soldItem.costPrice > 0.0
-        val profit = soldItem?.let { (it.sellingPrice - it.costPrice) * quantity } ?: 0.0
-        val costPriceSnapshot = soldItem?.let { it.costPrice * quantity } ?: 0.0
-        val (myPhone, _) = currentSession()
-        // A custom/service sale (no linked item) has no cost basis to review,
-        // so it's reconciled by definition. A sale tied to a tracked item is
-        // only trustworthy once that item's OWN cost price is known -
-        // regardless of whether an owner's or a worker's device recorded the
-        // sale (an owner can sell an item whose cost was never set, same as
-        // a worker can) - so it still needs manual review via reconcileSale
-        // until the item's cost is actually set. Once it is, every sale
-        // created afterward just inherits it automatically from here.
-        val financialsReconciled = inventoryItemId == null || itemCostKnown
-        val resolvedProvisionalReceiptNumber = provisionalReceiptNumber
-            ?: receiptNumberGenerator?.next(myPhone) ?: ""
-
-        // Held in a val (not inlined into insertSale's argument) so the same
-        // id/fields that get persisted are what's handed back to the caller
-        // - Sale's id is generated client-side at construction (IdGenerator),
-        // so this object already reflects exactly what's in the DB.
-        val sale = Sale(
-            customerId = customerId,
-            customerName = customerName,
-            description = description,
-            amount = amount,
-            profit = profit,
-            costPriceSnapshot = costPriceSnapshot,
-            inventoryItemId = inventoryItemId,
-            quantity = quantity,
-            paymentMethod = paymentMethod,
-            date = System.currentTimeMillis(),
-            recordedBy = myPhone,
-            financialsReconciled = financialsReconciled,
-            provisionalReceiptNumber = resolvedProvisionalReceiptNumber
-        )
-        repository.insertSale(sale)
-
-        if (soldItem != null) {
-            repository.recordSaleStockAdjustment(soldItem.id, quantity)
-        }
-        return sale
-    }
-
-    // Entry point for AddSaleScreen's "cart" of line items. Handles the one
-    // thing that's genuinely different about that screen vs. calling addSale
-    // directly per line: the customer may be a walk-in the user has chosen,
-    // via the "Save as new customer" toggle, to promote into a real saved
-    // Customer for this sale. That promotion has to happen once, up front,
-    // and be awaited - every line item then shares the same resolved
-    // customerId, rather than each line racing to create its own duplicate
-    // Customer row.
     fun addSaleLines(
         customerName: String,
         selectedCustomerId: String?,
         saveAsNewCustomer: Boolean,
         paymentMethod: PaymentMethod,
         lines: List<SaleLineInput>,
-        // Called once, after every line has been attempted, with every Sale
-        // row this checkout actually created (a line that failed the stock
-        // check inside insertSale is simply omitted, not retried). Defaults
-        // to a no-op so existing callers don't need to change.
-        // AddSaleScreen uses this to navigate to the receipt screen with the
-        // real, persisted Sale rows rather than re-deriving them by matching
-        // timestamp/customer back out of the sales flow.
         onSalesCreated: (List<Sale>) -> Unit = {}
     ) = viewModelScope.launch {
-        val resolvedCustomerId = when {
-            selectedCustomerId != null -> selectedCustomerId
-            saveAsNewCustomer && customerName.isNotBlank() -> {
-                val newCustomer = Customer(name = customerName)
-                repository.insertCustomer(newCustomer)
-                newCustomer.id
-            }
-            else -> null
-        }
-        // One receipt number for this whole checkout, claimed once here and
-        // reused for every line - not one per product. SaleSync.pushPending
-        // mirrors this by claiming a single authoritative number per group
-        // of sales that share a provisionalReceiptNumber, so the two stay
-        // consistent whether the number is being read offline or after sync.
-        val (myPhone, _) = currentSession()
-        val checkoutReceiptNumber = receiptNumberGenerator?.next(myPhone) ?: ""
-
-        val created = mutableListOf<Sale>()
-        lines.forEach { line ->
-            val sale = insertSale(
-                customerName = customerName,
-                customerId = resolvedCustomerId,
-                description = line.description,
-                amount = line.amount,
-                paymentMethod = paymentMethod,
-                inventoryItemId = line.inventoryItemId,
-                quantity = line.quantity,
-                provisionalReceiptNumber = checkoutReceiptNumber
-            )
-            if (sale != null) created.add(sale)
-        }
-        syncEngine?.requestPush()
-        onSalesCreated(created)
+        saleActions.addSaleLines(
+            customerName, selectedCustomerId, saveAsNewCustomer, paymentMethod, lines, onSalesCreated
+        )
     }
 
     fun deleteSale(sale: Sale) = viewModelScope.launch {
-        repository.deleteSale(sale)
-        syncEngine?.requestPush()
+        saleActions.deleteSale(sale)
     }
 
-    // Expense Actions
+    // Expense Actions - delegated to ExpenseActions (Option A restructuring).
+    private val expenseActions = ExpenseActions(repository, syncEngine)
+
     fun addExpense(
         description: String,
         amount: Double,
@@ -483,81 +279,44 @@ class SMEViewModel @Inject constructor(
         receiptNumber: String? = null,
         localReceiptPath: String? = null
     ) = viewModelScope.launch {
-        repository.addExpense(
-            Expense(
-                description = description,
-                amount = amount,
-                category = category,
-                receiptNumber = receiptNumber,
-                localReceiptPath = localReceiptPath,
-                receiptPendingUpload = localReceiptPath != null
-            )
-        )
-        syncEngine?.requestPush()
+        expenseActions.addExpense(description, amount, category, receiptNumber, localReceiptPath)
     }
 
     fun deleteExpense(expense: Expense) = viewModelScope.launch {
-        repository.deleteExpense(expense)
-        syncEngine?.requestPush()
+        expenseActions.deleteExpense(expense)
     }
 
-    // Task Actions
+    // Task Actions - delegated to TaskActions (Option A restructuring).
+    // Thin forwarding wrappers preserve the existing public API, so no
+    // screen call site changes.
+    private val taskActions = TaskActions(repository, syncEngine)
+
     fun addTask(title: String, description: String? = null, priority: String = "Medium", dueDate: Long? = null) = viewModelScope.launch {
-        repository.addTask(
-            Task(
-                title = title,
-                description = description,
-                priority = priority,
-                dueDate = dueDate
-            )
-        )
-        syncEngine?.requestPush()
+        taskActions.addTask(title, description, priority, dueDate)
     }
 
     fun completeTask(taskId: String) = viewModelScope.launch {
-        repository.completeTask(taskId)
-        syncEngine?.requestPush()
+        taskActions.completeTask(taskId)
     }
 
     fun deleteTask(task: Task) = viewModelScope.launch {
-        repository.deleteTask(task)
-        syncEngine?.requestPush()
+        taskActions.deleteTask(task)
     }
 
-    // Reconciliation Actions (owner-only; screen is responsible for gating)
-    // costPricePerUnit is what the owner enters (matches how InventoryItem.
-    // costPrice is entered everywhere else). Sale.costPriceSnapshot is
-    // documented as the TOTAL cost basis (costPrice * quantity), and
-    // Sale.amount is the total the customer paid for the whole line - so
-    // profit is amount minus total cost, not a per-unit difference.
+    // Reconciliation Actions - delegated to ReconciliationActions (Option A restructuring).
+    private val reconciliationActions = ReconciliationActions(
+        repository, syncEngine, unreconciledSales, sales
+    )
+
     fun reconcileSale(saleId: String, costPricePerUnit: Double) = viewModelScope.launch {
-        val sale = unreconciledSales.value.find { it.id == saleId } ?: return@launch
-        val totalCost = costPricePerUnit * sale.quantity
-        val profit = sale.amount - totalCost
-        repository.reconcileSaleFinancials(saleId, totalCost, profit)
-        syncEngine?.requestPush()
+        reconciliationActions.reconcileSale(saleId, costPricePerUnit)
     }
 
     fun reconcileInventoryCost(itemId: String, costPrice: Double) = viewModelScope.launch {
-        repository.reconcileItemCost(itemId, costPrice)
-        syncEngine?.requestPush()
+        reconciliationActions.reconcileInventoryCost(itemId, costPrice)
     }
 
-    // Owner-only correction for a sale that's ALREADY reconciled (auto or
-    // manual) but turned out to need a different cost - e.g. this
-    // particular unit was actually bought at a one-off price different from
-    // the item's normal cost. Deliberately looks the sale up in `sales`
-    // (every sale), not `unreconciledSales` - reconcileSale above is scoped
-    // to the queue on purpose (see its test coverage), so this is a
-    // separate, explicit "I want to revise this" action rather than a
-    // relaxation of that one. Reuses the same repository write as
-    // reconcileSale since the end state is identical: a reconciled sale
-    // with a specific costPriceSnapshot/profit, pendingSync so it re-pushes.
     fun editSaleCost(saleId: String, costPricePerUnit: Double) = viewModelScope.launch {
-        val sale = sales.value.find { it.id == saleId } ?: return@launch
-        val totalCost = costPricePerUnit * sale.quantity
-        val profit = sale.amount - totalCost
-        repository.reconcileSaleFinancials(saleId, totalCost, profit)
-        syncEngine?.requestPush()
+        reconciliationActions.editSaleCost(saleId, costPricePerUnit)
     }
 }
