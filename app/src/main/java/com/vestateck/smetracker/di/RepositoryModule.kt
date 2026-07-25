@@ -31,11 +31,41 @@ object RepositoryModule {
 
     @Provides
     @Singleton
-    fun provideFirebaseAuth(): FirebaseAuth = FirebaseAuth.getInstance()
+    fun provideFirebaseAuth(): FirebaseAuth {
+        val auth = FirebaseAuth.getInstance()
+        if (isRunningTest()) {
+            try {
+                auth.useEmulator("10.0.2.2", 9099)
+                auth.firebaseAuthSettings.setAppVerificationDisabledForTesting(true)
+            } catch (e: Exception) {
+                // Already initialized
+            }
+        }
+        return auth
+    }
 
     @Provides
     @Singleton
-    fun provideFirebaseFirestore(): FirebaseFirestore = FirebaseFirestore.getInstance()
+    fun provideFirebaseFirestore(): FirebaseFirestore {
+        val firestore = FirebaseFirestore.getInstance()
+        if (isRunningTest()) {
+            try {
+                firestore.useEmulator("10.0.2.2", 8080)
+            } catch (e: Exception) {
+                // Already initialized
+            }
+        }
+        return firestore
+    }
+
+    private fun isRunningTest(): Boolean {
+        return try {
+            Class.forName("androidx.test.InstrumentationRegistry")
+            true
+        } catch (e: ClassNotFoundException) {
+            false
+        }
+    }
 
     @Provides
     @Singleton

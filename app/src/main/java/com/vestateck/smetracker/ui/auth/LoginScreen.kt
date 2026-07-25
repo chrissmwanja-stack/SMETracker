@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.vestateck.smetracker.data.remote.auth.AuthScreenState
 import com.vestateck.smetracker.data.remote.auth.AuthViewModel
 import com.vestateck.smetracker.data.remote.model.MemberRole
+import com.vestateck.smetracker.utils.AppLinks
 
 @Composable
 fun LoginScreen(
@@ -46,7 +47,8 @@ fun LoginScreen(
 
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .padding(24.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -107,6 +109,18 @@ fun LoginScreen(
 
                 else -> { /* NeedsOwnerSignUp / LoggedIn handled by navigation */ }
             }
+        }
+
+        // Visible before sign-in, not just after - Play Store review (and
+        // anyone deciding whether to hand over their phone number) expects
+        // to find this without needing an account first.
+        TextButton(
+            onClick = { AppLinks.openUrl(context, AppLinks.PRIVACY_POLICY_URL) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp)
+        ) {
+            Text("Privacy Policy", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

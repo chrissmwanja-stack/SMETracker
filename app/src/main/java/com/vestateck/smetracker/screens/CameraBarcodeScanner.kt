@@ -1,6 +1,7 @@
 // screens/CameraBarcodeScanner.kt
 package com.vestateck.smetracker.screens
 
+import android.annotation.SuppressLint
 import android.util.Log
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -27,12 +28,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.ExecutorService
@@ -58,6 +59,7 @@ import java.util.concurrent.Executors
  * exactly one code per invocation - the same contract as a hardware
  * scanner's single Enter-terminated scan.
  */
+@SuppressLint("UnsafeOptInUsageError")
 @Composable
 fun CameraBarcodeScanner(
     onResult: (code: String) -> Unit,

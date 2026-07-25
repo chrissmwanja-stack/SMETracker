@@ -156,7 +156,8 @@ class MainActivity : ComponentActivity() {
                                     },
                                     isOwner = currentEntry.second == MemberRole.OWNER,
                                     onAddWorker = { navController.navigate(Screen.AddWorker.route) },
-                                    onBusinessSettings = { navController.navigate(Screen.BusinessSettings.route) }
+                                    onBusinessSettings = { navController.navigate(Screen.BusinessSettings.route) },
+                                    onAbout = { navController.navigate(Screen.About.route) }
                                 )
                             }
                             composable(Screen.AddSale.route) { AddSaleScreen(viewModel = viewModel, navController = navController) }
@@ -222,6 +223,9 @@ class MainActivity : ComponentActivity() {
                                     businessRepository = businessRepository,
                                     onBack = { navController.popBackStack() }
                                 )
+                            }
+                            composable(Screen.About.route) {
+                                AboutScreen(onBack = { navController.popBackStack() })
                             }
                             composable(
                                 Screen.SaleReceipt.route,

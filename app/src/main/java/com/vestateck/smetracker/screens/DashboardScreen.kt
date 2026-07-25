@@ -45,7 +45,8 @@ fun DashboardScreen(
     onSignOut: () -> Unit = {},
     isOwner: Boolean = false,
     onAddWorker: () -> Unit = {},
-    onBusinessSettings: () -> Unit = {}
+    onBusinessSettings: () -> Unit = {},
+    onAbout: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val businessName by viewModel.businessName.collectAsState()
@@ -116,6 +117,17 @@ fun DashboardScreen(
                                 tint = MaterialTheme.colorScheme.onPrimary
                             )
                         }
+                    }
+                    // Not gated by isOwner, unlike the buttons above - a Worker's
+                    // data is collected too, so the privacy policy link inside
+                    // AboutScreen needs to be reachable by both roles, not just
+                    // the owner-only BusinessSettingsScreen.
+                    IconButton(onClick = onAbout) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = "About",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
                     }
                     IconButton(onClick = onSignOut) {
                         Icon(
