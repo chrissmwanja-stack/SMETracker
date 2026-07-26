@@ -12,4 +12,11 @@ object CurrencyUtils {
     fun formatUgx(amount: Double): String {
         return "UGX ${ugxFormatter.format(amount.toLong())}"
     }
+
+    /** Same grouping/rounding as [formatUgx] but without the "UGX" prefix - for
+     *  table cells (e.g. a receipt's Qty/Price/Amount columns) where the
+     *  currency is already established once by the surrounding context. */
+    fun formatNumber(amount: Double): String {
+        return ugxFormatter.format(amount.toLong())
+    }
 }

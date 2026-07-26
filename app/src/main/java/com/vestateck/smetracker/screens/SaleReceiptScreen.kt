@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -21,7 +23,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -211,6 +215,7 @@ fun SaleReceiptScreen(
 @Composable
 private fun ReceiptPreviewCard(data: ReceiptData) {
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault()) }
+    val mono = FontFamily.Monospace
 
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -219,14 +224,23 @@ private fun ReceiptPreviewCard(data: ReceiptData) {
         ) {
             Text(data.businessName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             if (data.businessAddress.isNotBlank()) {
-                Text(data.businessAddress, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(data.businessAddress, fontSize = 12.sp, fontFamily = mono, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (data.businessPhone.isNotBlank()) {
-                Text(data.businessPhone, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(data.businessPhone, fontSize = 12.sp, fontFamily = mono, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             Spacer(Modifier.height(14.dp))
-            HorizontalDivider()
+            // Boxed label - a visual echo of the boxed "TAX INVOICE" header on
+            // a printed till slip. Not an actual tax invoice: no TIN/EFRIS
+            // fiscal data anywhere on this receipt.
+            Box(
+                modifier = Modifier
+                    .border(width = 1.dp, color = MaterialTheme.colorScheme.onSurface)
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Text("SALES RECEIPT", fontWeight = FontWeight.Bold, fontSize = 13.sp, fontFamily = mono)
+            }
             Spacer(Modifier.height(14.dp))
 
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -240,46 +254,78 @@ private fun ReceiptPreviewCard(data: ReceiptData) {
             }
 
             Spacer(Modifier.height(14.dp))
-            HorizontalDivider()
-            Spacer(Modifier.height(14.dp))
+            DashedDivider()
+            Spacer(Modifier.height(10.dp))
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Text("Item", fontSize = 11.sp, fontFamily = mono, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("Qty", fontSize = 11.sp, fontFamily = mono, fontWeight = FontWeight.Bold, modifier = Modifier.width(34.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                Text("Price", fontSize = 11.sp, fontFamily = mono, fontWeight = FontWeight.Bold, modifier = Modifier.width(56.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                Text("Amount", fontSize = 11.sp, fontFamily = mono, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+            }
+            Spacer(Modifier.height(6.dp))
+            DashedDivider()
+            Spacer(Modifier.height(10.dp))
 
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 data.lines.forEach { line ->
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(
-                            line.description + if (line.quantity > 1) " x${line.quantity}" else "",
-                            fontSize = 13.sp,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Text(CurrencyUtils.formatUgx(line.amount), fontSize = 13.sp)
+                    val unitPrice = if (line.quantity != 0) line.amount / line.quantity else line.amount
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Text(line.description, fontSize = 13.sp, fontFamily = mono, modifier = Modifier.weight(1f))
+                        Text(line.quantity.toString(), fontSize = 13.sp, fontFamily = mono, modifier = Modifier.width(34.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                        Text(CurrencyUtils.formatNumber(unitPrice), fontSize = 13.sp, fontFamily = mono, modifier = Modifier.width(56.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                        Text(CurrencyUtils.formatNumber(line.amount), fontSize = 13.sp, fontFamily = mono, modifier = Modifier.width(64.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
                     }
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
-            HorizontalDivider()
+            Spacer(Modifier.height(10.dp))
+            DashedDivider()
             Spacer(Modifier.height(14.dp))
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("TOTAL", fontWeight = FontWeight.Bold)
-                Text(CurrencyUtils.formatUgx(data.total), fontWeight = FontWeight.Bold)
+                Text("TOTAL", fontWeight = FontWeight.Bold, fontFamily = mono)
+                Text(CurrencyUtils.formatUgx(data.total), fontWeight = FontWeight.Bold, fontFamily = mono)
             }
 
             Spacer(Modifier.height(14.dp))
             Text(
-                "Thank you for your business!",
+                "Thank you, please come again!",
                 fontSize = 12.sp,
+                fontFamily = mono,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                "Powered by SME Tracker",
+                fontSize = 11.sp,
+                fontFamily = mono,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
 
+/** A thin dashed horizontal rule - the Compose-side counterpart of
+ *  ReceiptRenderer's dashedDivider(), so the on-screen preview and the
+ *  shared image/PDF read as the same receipt. */
+@Composable
+private fun DashedDivider() {
+    Canvas(modifier = Modifier.fillMaxWidth().height(1.dp)) {
+        drawLine(
+            color = Color.DarkGray,
+            start = androidx.compose.ui.geometry.Offset(0f, 0f),
+            end = androidx.compose.ui.geometry.Offset(size.width, 0f),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f),
+            strokeWidth = 2f
+        )
+    }
+}
+
 @Composable
 private fun ReceiptDetailRow(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, fontSize = 12.sp)
+        Text(label, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
     }
 }
 

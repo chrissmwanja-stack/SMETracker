@@ -5,7 +5,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import com.vestateck.smetracker.data.entities.PaymentMethod
 import com.vestateck.smetracker.data.entities.Sale
@@ -91,6 +93,7 @@ object ReceiptRenderer {
     private val dateFormat = SimpleDateFormat("dd MMM yyyy, h:mm a", Locale.getDefault())
 
     private fun formatUgx(amount: Double): String = CurrencyUtils.formatUgx(amount)
+    private fun formatNumber(amount: Double): String = CurrencyUtils.formatNumber(amount)
 
     private fun ellipsize(text: String, maxWidth: Float, paint: Paint): String {
         if (paint.measureText(text) <= maxWidth) return text
@@ -113,18 +116,27 @@ object ReceiptRenderer {
         val center = width / 2f
         var y = MARGIN * scale
 
-        fun paint(size: Float, bold: Boolean = false, color: Int = Color.BLACK) =
+        fun paint(size: Float, bold: Boolean = false, color: Int = Color.BLACK, mono: Boolean = true) =
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 textSize = size * scale
                 isFakeBoldText = bold
                 this.color = color
+                // Monospace gives the printed-slip look the styling is going
+                // for; titlePaint stays on the default typeface since a
+                // business name in a fixed-width font tends to look cramped.
+                if (mono) typeface = Typeface.MONOSPACE
             }
 
-        val titlePaint = paint(18f, bold = true)
+        val titlePaint = paint(18f, bold = true, mono = false)
         val bodyPaint = paint(12f)
+        val headerPaint = paint(11f, bold = true, color = Color.DKGRAY)
         val smallPaint = paint(10f, color = Color.DKGRAY)
         val boldPaint = paint(13f, bold = true)
-        val dividerPaint = paint(1f, color = Color.LTGRAY).apply { strokeWidth = 1f }
+        val dividerPaint = paint(1f, color = Color.DKGRAY).apply {
+            strokeWidth = 1f
+            pathEffect = DashPathEffect(floatArrayOf(4f * scale, 3f * scale), 0f)
+        }
+        val boxPaint = paint(1f, color = Color.BLACK).apply { style = Paint.Style.STROKE; strokeWidth = 1.2f * scale }
 
         fun centerText(text: String, p: Paint) {
             canvas?.drawText(text, center - p.measureText(text) / 2f, y, p)
@@ -132,7 +144,10 @@ object ReceiptRenderer {
         fun leftText(text: String, p: Paint, maxWidth: Float = right - left) {
             canvas?.drawText(ellipsize(text, maxWidth, p), left, y, p)
         }
-        fun divider() {
+        fun rightText(text: String, p: Paint, rightEdge: Float = right) {
+            canvas?.drawText(text, rightEdge - p.measureText(text), y, p)
+        }
+        fun dashedDivider() {
             canvas?.drawLine(left, y, right, y, dividerPaint)
         }
 
@@ -147,8 +162,23 @@ object ReceiptRenderer {
             y += 14f * scale
         }
         y += 10f * scale
-        divider()
-        y += 18f * scale
+
+        // Boxed "SALES RECEIPT" label, mirroring the boxed "TAX INVOICE"
+        // header a printed till slip has - purely a visual echo, since this
+        // app doesn't issue tax invoices (no fiscal/EFRIS data below).
+        val boxLabel = "SALES RECEIPT"
+        val boxLabelPaint = paint(13f, bold = true)
+        val boxTextWidth = boxLabelPaint.measureText(boxLabel)
+        val boxPadH = 14f * scale
+        val boxPadV = 8f * scale
+        val boxWidth = boxTextWidth + boxPadH * 2f
+        val boxLeft = center - boxWidth / 2f
+        val boxHeight = boxLabelPaint.textSize + boxPadV * 2f
+        canvas?.drawRect(boxLeft, y, boxLeft + boxWidth, y + boxHeight, boxPaint)
+        y += boxPadV + boxLabelPaint.textSize * 0.75f
+        centerText(boxLabel, boxLabelPaint)
+        y += boxHeight - (boxPadV + boxLabelPaint.textSize * 0.75f)
+        y += 16f * scale
 
         val receiptLabel = "Receipt #: ${data.receiptNumber}" + if (data.isProvisional) " (provisional)" else ""
         leftText(receiptLabel, smallPaint)
@@ -159,29 +189,48 @@ object ReceiptRenderer {
         y += 14f * scale
         leftText("Payment: ${data.paymentMethod.name.replace("_", " ")}", smallPaint)
         y += 16f * scale
-        divider()
-        y += 18f * scale
+        dashedDivider()
+        y += 16f * scale
+
+        // Column layout: Item (flexible) | Qty | Price | Amount - Qty/Price/
+        // Amount get fixed right-anchored columns, same shape as the Ecomart/
+        // Masters slips' item tables.
+        val priceColWidth = 62f * scale
+        val amountColWidth = 68f * scale
+        val amountColRight = right
+        val priceColRight = amountColRight - amountColWidth
+        val qtyColRight = priceColRight - priceColWidth
+        val itemMaxWidth = qtyColRight - 8f * scale - left
+
+        leftText("Item", headerPaint, maxWidth = itemMaxWidth)
+        rightText("Qty", headerPaint, rightEdge = qtyColRight)
+        rightText("Price", headerPaint, rightEdge = priceColRight)
+        rightText("Amount", headerPaint, rightEdge = amountColRight)
+        y += 14f * scale
+        dashedDivider()
+        y += 16f * scale
 
         data.lines.forEach { line ->
-            val amountText = formatUgx(line.amount)
-            val amountWidth = bodyPaint.measureText(amountText)
-            val qtySuffix = if (line.quantity > 1) " x${line.quantity}" else ""
-            leftText(line.description + qtySuffix, bodyPaint, maxWidth = (right - left) - amountWidth - 12f * scale)
-            canvas?.drawText(amountText, right - amountWidth, y, bodyPaint)
+            val unitPrice = if (line.quantity != 0) line.amount / line.quantity else line.amount
+            leftText(line.description, bodyPaint, maxWidth = itemMaxWidth)
+            rightText(line.quantity.toString(), bodyPaint, rightEdge = qtyColRight)
+            rightText(formatNumber(unitPrice), bodyPaint, rightEdge = priceColRight)
+            rightText(formatNumber(line.amount), bodyPaint, rightEdge = amountColRight)
             y += 18f * scale
         }
 
-        y += 6f * scale
-        divider()
+        y += 4f * scale
+        dashedDivider()
         y += 20f * scale
 
         leftText("TOTAL", boldPaint)
-        val totalText = formatUgx(data.total)
-        canvas?.drawText(totalText, right - boldPaint.measureText(totalText), y, boldPaint)
+        rightText(formatUgx(data.total), boldPaint)
         y += 24f * scale
 
-        centerText("Thank you for your business!", smallPaint)
-        y += 20f * scale
+        centerText("Thank you, please come again!", smallPaint)
+        y += 14f * scale
+        centerText("Powered by SME Tracker", smallPaint)
+        y += 16f * scale
 
         return y
     }
