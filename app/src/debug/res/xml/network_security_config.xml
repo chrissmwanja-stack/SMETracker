@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Only 10.0.2.2 (the emulator's alias for the host machine) gets cleartext.
+         This lets debug builds talk to local Firebase Auth/Firestore emulators
+         without loosening cleartext rules for anything else, and this file is
+         never included in release builds since it lives under src/debug. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+
+    <!-- Everything else in debug builds still follows the platform default
+         (cleartext blocked), matching production behavior as closely as possible. -->
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>

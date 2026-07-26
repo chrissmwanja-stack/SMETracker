@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.time.Duration.Companion.seconds
 
 private const val TAG = "FirebaseEmulatorRule"
 
@@ -55,12 +56,40 @@ class FirebaseEmulatorRule(
             ?: error("FirebaseApp has no projectId — check google-services.json")
     }
 
+    override fun apply(base: org.junit.runners.model.Statement, description: Description): org.junit.runners.model.Statement {
+        return object : org.junit.runners.model.Statement() {
+            override fun evaluate() {
+                starting(description)
+                try {
+                    base.evaluate()
+                    succeeded(description)
+                } catch (e: Throwable) {
+                    failed(e, description)
+                    throw e
+                } finally {
+                    finished(description)
+                }
+            }
+        }
+    }
+
     override fun starting(description: Description) {
         super.starting(description)
 
         Log.d(TAG, "Starting test: ${description.methodName}")
 
         configureFirebaseEmulators()
+
+        // ALWAYS ensure app verification is disabled, even if emulators were already
+        // configured in a previous test. Without this, Phone Auth falls back to
+        // real Play Integrity/reCAPTCHA and fails with FirebaseNetworkException
+        // in a non-internet test environment.
+        try {
+            auth.firebaseAuthSettings.setAppVerificationDisabledForTesting(true)
+            Log.d(TAG, "App verification disabled for testing")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to disable app verification: ${e.message}")
+        }
 
         // Fail fast if emulator is unreachable to avoid confusing FirebaseAuth
         // Play Integrity/reCAPTCHA errors later.
@@ -70,7 +99,7 @@ class FirebaseEmulatorRule(
         } catch (e: Exception) {
             val msg = "Firebase Auth emulator is NOT reachable at $emulatorHost:$authPort. " +
                     "1. Run 'firebase emulators:start --only auth,firestore' on your host machine. " +
-                    "2. Ensure firebase.json has host 0.0.0.0 or localhost access is available. " +
+                    "2. Ensure firebase.json has host 0.0.0.0. " +
                     "3. Check your firewall settings. " +
                     "Error: ${e.message}"
 
@@ -80,7 +109,7 @@ class FirebaseEmulatorRule(
 
         try {
             blockingHttp("DELETE", authEmulatorUrl("accounts"))
-            blockingHttp("DELETE", firestoreEmulatorUrl("documents"))
+            blockingHttp("DELETE", firestoreEmulatorUrl())
             Log.d(TAG, "Emulator state cleared")
         } catch (e: Exception) {
             Log.w(TAG, "Cleanup failed; continuing because cleanup is non-fatal: ${e.message}")
@@ -122,17 +151,6 @@ class FirebaseEmulatorRule(
         } else {
             Log.d(TAG, "Firebase emulators were already configured in this test process")
         }
-
-        try {
-            auth.useEmulator(emulatorHost, authPort)
-            firestore.useEmulator(emulatorHost, firestorePort)
-
-            auth.firebaseAuthSettings.setAppVerificationDisabledForTesting(true)
-
-            Log.i(TAG, "Firebase emulators configured from FirebaseEmulatorRule")
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to ensure Firebase emulator configuration: ${e.message}", e)
-        }
     }
 
     /**
@@ -145,8 +163,8 @@ class FirebaseEmulatorRule(
     ): FirebaseUser = withContext(Dispatchers.IO) {
         Log.d(TAG, "signInWithPhoneNumber started for $phoneNumber")
 
-        withTimeout(TimeUnit.SECONDS.toMillis(timeoutSeconds + 10)) {
-            val credential = suspendCancellableCoroutine<PhoneAuthCredential> { cont ->
+        withTimeout((timeoutSeconds + 10).seconds) {
+            val credential = suspendCancellableCoroutine { cont ->
                 val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
 
                     override fun onVerificationCompleted(credential: PhoneAuthCredential) {
@@ -263,8 +281,8 @@ class FirebaseEmulatorRule(
         return "http://$emulatorHost:$authPort/emulator/v1/projects/$projectId/$path"
     }
 
-    private fun firestoreEmulatorUrl(path: String): String {
-        return "http://$emulatorHost:$firestorePort/emulator/v1/projects/$projectId/databases/(default)/$path"
+    private fun firestoreEmulatorUrl(): String {
+        return "http://$emulatorHost:$firestorePort/emulator/v1/projects/$projectId/databases/(default)/documents"
     }
 
     private fun blockingHttp(
@@ -317,11 +335,5 @@ class FirebaseEmulatorRule(
 
     companion object {
         private val emulatorsConfigured = AtomicBoolean(false)
-    }
-}
-
-suspend fun <T> withIo(block: suspend () -> T): T {
-    return withContext(Dispatchers.IO) {
-        block()
     }
 }

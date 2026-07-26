@@ -1,6 +1,7 @@
 package com.vestateck.smetracker.di
 
 import android.content.Context
+import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.vestateck.smetracker.data.dao.InventoryDao
@@ -19,12 +20,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-/**
- * Repositories, session state, and small utility classes that used to be
- * `by lazy` vals in MainActivity. All @Singleton - process-lifetime, same as
- * before (this app has one Activity, so the old per-Activity lazy vals were
- * already effectively process-scoped in practice).
- */
+private const val TAG = "RepositoryModule"
+
 @Module
 @InstallIn(SingletonComponent::class)
 object RepositoryModule {
@@ -35,10 +32,11 @@ object RepositoryModule {
         val auth = FirebaseAuth.getInstance()
         if (isRunningTest()) {
             try {
+                Log.i(TAG, "Configuring FirebaseAuth for emulator (10.0.2.2:9099)")
                 auth.useEmulator("10.0.2.2", 9099)
                 auth.firebaseAuthSettings.setAppVerificationDisabledForTesting(true)
             } catch (e: Exception) {
-                // Already initialized
+                Log.w(TAG, "FirebaseAuth emulator already set or failed: \${e.message}")
             }
         }
         return auth
@@ -50,21 +48,28 @@ object RepositoryModule {
         val firestore = FirebaseFirestore.getInstance()
         if (isRunningTest()) {
             try {
+                Log.i(TAG, "Configuring FirebaseFirestore for emulator (10.0.2.2:8080)")
                 firestore.useEmulator("10.0.2.2", 8080)
             } catch (e: Exception) {
-                // Already initialized
+                Log.w(TAG, "FirebaseFirestore emulator already set or failed: \${e.message}")
             }
         }
         return firestore
     }
 
     private fun isRunningTest(): Boolean {
-        return try {
-            Class.forName("androidx.test.InstrumentationRegistry")
+        val result = try {
+            Class.forName("androidx.test.platform.app.InstrumentationRegistry")
             true
         } catch (e: ClassNotFoundException) {
-            false
+            try {
+                Class.forName("androidx.test.InstrumentationRegistry")
+                true
+            } catch (e2: ClassNotFoundException) {
+                false
+            }
         }
+        return result
     }
 
     @Provides

@@ -30,9 +30,23 @@ class SMETrackerApplication : Application(), Configuration.Provider {
         super.onCreate()
 
         val isInstrumentedTest = isRunningInstrumentedTest()
+        Log.i(TAG, "onCreate: isRunningInstrumentedTest=\$isInstrumentedTest")
 
         if (isInstrumentedTest) {
+            Log.i(TAG, "Instrumented test detected. Configuring emulators and disabling App Check token auto-refresh.")
             configureFirebaseEmulatorsForInstrumentedTests()
+
+            // Install Debug provider for App Check in instrumented tests so that
+            // requests to emulators (Auth/Firestore) don't fail due to missing tokens
+            // or attempts to reach production App Check.
+            try {
+                Firebase.appCheck.installAppCheckProviderFactory(
+                    DebugAppCheckProviderFactory.getInstance()
+                )
+                Firebase.appCheck.setTokenAutoRefreshEnabled(false)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to configure App Check for tests: ${e.message}")
+            }
             return
         }
 
@@ -40,6 +54,7 @@ class SMETrackerApplication : Application(), Configuration.Provider {
     }
 
     private fun installFirebaseAppCheck() {
+        Log.i(TAG, "Installing Firebase App Check")
         val providerFactory = if (BuildConfig.DEBUG) {
             DebugAppCheckProviderFactory.getInstance()
         } else {
@@ -47,8 +62,6 @@ class SMETrackerApplication : Application(), Configuration.Provider {
         }
 
         Firebase.appCheck.installAppCheckProviderFactory(providerFactory)
-
-        Log.d(TAG, "Firebase App Check installed")
     }
 
     /**
@@ -66,10 +79,10 @@ class SMETrackerApplication : Application(), Configuration.Provider {
 
             Log.i(
                 TAG,
-                "FirebaseAuth configured for emulator at $AUTH_EMULATOR_HOST:$AUTH_EMULATOR_PORT"
+                "FirebaseAuth configured for emulator at \$AUTH_EMULATOR_HOST:\$AUTH_EMULATOR_PORT"
             )
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to configure FirebaseAuth emulator: ${e.message}", e)
+            Log.w(TAG, "Failed to configure FirebaseAuth emulator: \${e.message}")
         }
 
         try {
@@ -80,10 +93,10 @@ class SMETrackerApplication : Application(), Configuration.Provider {
 
             Log.i(
                 TAG,
-                "FirebaseFirestore configured for emulator at $FIRESTORE_EMULATOR_HOST:$FIRESTORE_EMULATOR_PORT"
+                "FirebaseFirestore configured for emulator at \$FIRESTORE_EMULATOR_HOST:\$FIRESTORE_EMULATOR_PORT"
             )
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to configure FirebaseFirestore emulator: ${e.message}", e)
+            Log.w(TAG, "Failed to configure FirebaseFirestore emulator: \${e.message}")
         }
     }
 
