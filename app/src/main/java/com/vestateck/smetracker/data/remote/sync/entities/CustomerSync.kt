@@ -30,6 +30,12 @@ class CustomerSync(
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         val remote = change.document.toObject(RemoteCustomer::class.java)
+
+                        // Skip if the local row has an unsynced change - see
+                        // TaskSync's attachListener for why this matters.
+                        val local = smeDao.getCustomerById(remote.id)
+                        if (local != null && local.pendingSync) continue
+
                         smeDao.insertCustomer(
                             Customer(
                                 id = remote.id,

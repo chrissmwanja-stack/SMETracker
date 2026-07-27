@@ -70,6 +70,11 @@ interface SMEDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCustomer(customer: Customer): Long
 
+    // Used by CustomerSync's listener to check for an unsynced local change
+    // before applying an incoming remote write.
+    @Query("SELECT * FROM customers WHERE id = :customerId LIMIT 1")
+    suspend fun getCustomerById(customerId: String): Customer?
+
     @Update
     suspend fun updateCustomer(customer: Customer)
 
@@ -101,6 +106,11 @@ interface SMEDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDebt(debt: Debt): Long
+
+    // Used by DebtSync's listener to check for an unsynced local change
+    // before applying an incoming remote write.
+    @Query("SELECT * FROM debts WHERE id = :debtId LIMIT 1")
+    suspend fun getDebtById(debtId: String): Debt?
 
     @Query("UPDATE debts SET isPaid = 1, pendingSync = 1 WHERE id = :debtId")
     suspend fun markDebtAsPaid(debtId: String)
@@ -159,6 +169,12 @@ interface SMEDao {
     // -- Tasks -----------------------------------------------------
     @Query("SELECT * FROM tasks WHERE isDeleted = 0 AND isCompleted = 0 ORDER BY dueDate ASC")
     fun getPendingTasks(): Flow<List<Task>>
+
+    // Used by TaskSync's listener to check for an unsynced local change
+    // before applying an incoming remote write, so a stale snapshot can't
+    // clobber a completion/deletion that hasn't been pushed yet.
+    @Query("SELECT * FROM tasks WHERE id = :taskId LIMIT 1")
+    suspend fun getTaskById(taskId: String): Task?
 
     @Query("SELECT COUNT(*) FROM tasks WHERE isDeleted = 0 AND isCompleted = 0")
     fun getPendingTaskCount(): Flow<Long>

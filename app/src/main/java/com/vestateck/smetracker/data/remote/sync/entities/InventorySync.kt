@@ -47,6 +47,18 @@ class InventorySync(
                             // RemoteInventoryItem never carries costPrice — preserve
                             // whatever's locally known (see updateItemCostPrice).
                             val existing = inventoryDao.getItemById(remote.id)
+
+                            // Skip if the local row has an unsynced change (e.g. a
+                            // rename, price edit, or delete not yet pushed) - see
+                            // TaskSync's attachListener for why this matters. The
+                            // careful per-field preservation below (quantity,
+                            // costPrice, localImagePath, etc.) already protects
+                            // against clobbering those specific columns, but it
+                            // still unconditionally reset pendingSync to false,
+                            // which would make pushPending() silently drop a
+                            // pending edit it hadn't gotten to yet.
+                            if (existing != null && existing.pendingSync) continue
+
                             // quantity is deliberately NOT adopted from remote here — it's
                             // pushed as a best-effort snapshot (see pushPending below) but
                             // is no longer trusted on pull. Two devices editing this same

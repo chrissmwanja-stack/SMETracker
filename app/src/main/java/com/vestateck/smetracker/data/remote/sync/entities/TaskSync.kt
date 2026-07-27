@@ -30,6 +30,19 @@ class TaskSync(
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         try {
                             val remote = change.document.toObject(RemoteTask::class.java)
+
+                            // Guard against a stale snapshot clobbering a local
+                            // change that hasn't been pushed yet. Without this, a
+                            // task completed (or deleted) locally while offline -
+                            // or just ahead of pushPending() winning the race with
+                            // this listener's own initial snapshot - gets silently
+                            // reverted back to its old remote state, AND its
+                            // pendingSync flag gets cleared in the process, so
+                            // pushPending() never picks it up again either. The
+                            // completion is lost for good, not just delayed.
+                            val local = smeDao.getTaskById(remote.id)
+                            if (local != null && local.pendingSync) continue
+
                             smeDao.insertTask(
                                 Task(
                                     id = remote.id,

@@ -30,6 +30,13 @@ class DebtSync(
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
                         val remote = change.document.toObject(RemoteDebt::class.java)
+
+                        // Skip if the local row has an unsynced change (e.g. a
+                        // debt just marked paid offline) - see TaskSync's
+                        // attachListener for why this matters.
+                        val local = smeDao.getDebtById(remote.id)
+                        if (local != null && local.pendingSync) continue
+
                         smeDao.insertDebt(
                             Debt(
                                 id = remote.id,

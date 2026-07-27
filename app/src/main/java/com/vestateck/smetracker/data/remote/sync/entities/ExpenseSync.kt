@@ -60,6 +60,14 @@ class ExpenseSync(
                     // (i.e. the upload this device kicked off has landed);
                     // otherwise it stays true so pushPending() still retries it.
                     val existing = smeDao.getExpenseById(remote.id)
+
+                    // Skip if the local row has an unsynced change (e.g. a
+                    // status change or delete not yet pushed) - see TaskSync's
+                    // attachListener for why this matters. Note this is
+                    // separate from the receiptPendingUpload handling below,
+                    // which already guards the upload-echo case specifically.
+                    if (existing != null && existing.pendingSync) continue
+
                     val stillPendingUpload = existing?.receiptPendingUpload == true && remote.receiptUrl == null
                     smeDao.insertExpense(
                         Expense(

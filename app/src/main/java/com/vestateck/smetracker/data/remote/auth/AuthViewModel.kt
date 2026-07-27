@@ -152,8 +152,30 @@ class AuthViewModel @Inject constructor(
     /** Used right after LoggedIn fires, to tag a new offline-PIN credential row. See AuthNavGate. */
     fun currentFirebaseUid(): String? = authRepository.currentUid
 
+    /**
+     * "Forgot PIN" / "use a different account" from the PIN entry screen.
+     * Unlike signOut() above, this DOES release the live Firebase Auth
+     * session, since the whole point here is that this device is giving up
+     * its claim to that identity - a fresh phone/OTP login is required next,
+     * and it must be free to authenticate as a different account. Call
+     * alongside SessionManager.forgetDeviceCredential().
+     */
+    fun releaseFirebaseSession() = authRepository.signOut()
+
+    /**
+     * Normal "Sign Out" from inside the app. Deliberately does NOT call
+     * authRepository.signOut() - see SessionManager.clearSession() and
+     * AuthNavGate's doc comments. The whole point of the offline-PIN
+     * shortcut is that it's only valid while Firebase Auth's own session is
+     * still alive underneath (checked via hasLiveFirebaseSession()); killing
+     * that here would mean localCredential is never usable again after a
+     * single sign-out, forcing a full phone/OTP re-verification and a brand
+     * new PIN on every subsequent login. Firebase Auth itself only gets
+     * signed out via forgetDeviceCredential()'s callers (forgot PIN / use a
+     * different account), which is the actual "give up this device's
+     * identity" action.
+     */
     fun signOut(onComplete: () -> Unit = {}) {
-        authRepository.signOut()
         viewModelScope.launch {
             sessionManager.clearSession()
             _screenState.value = AuthScreenState.EnterPhone

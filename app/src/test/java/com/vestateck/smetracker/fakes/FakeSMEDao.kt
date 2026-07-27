@@ -105,6 +105,9 @@ class FakeSMEDao : SMEDao {
         return 0L
     }
 
+    override suspend fun getCustomerById(customerId: String): Customer? =
+        customersFlow.value.firstOrNull { it.id == customerId }
+
     override suspend fun updateCustomer(customer: Customer) {
         customersFlow.update { list -> list.map { if (it.id == customer.id) customer else it } }
     }
@@ -138,6 +141,9 @@ class FakeSMEDao : SMEDao {
         debtsFlow.update { list -> list.filterNot { it.id == debt.id } + debt }
         return 0L
     }
+
+    override suspend fun getDebtById(debtId: String): Debt? =
+        debtsFlow.value.firstOrNull { it.id == debtId }
 
     override suspend fun markDebtAsPaid(debtId: String) {
         debtsFlow.update { list -> list.map { if (it.id == debtId) it.copy(isPaid = true, pendingSync = true) else it } }
@@ -202,6 +208,7 @@ class FakeSMEDao : SMEDao {
 
     // -- Tasks -----------------------------------------------------
     override fun getPendingTasks(): Flow<List<Task>> = tasksFlow.map { list -> list.filter { !it.isDeleted && !it.isCompleted } }
+    override suspend fun getTaskById(taskId: String): Task? = tasksFlow.value.firstOrNull { it.id == taskId }
     override fun getPendingTaskCount(): Flow<Long> = tasksFlow.map { list -> list.count { !it.isDeleted && !it.isCompleted }.toLong() }
 
     override suspend fun insertTask(task: Task): Long {

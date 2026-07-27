@@ -168,6 +168,11 @@ fun AuthNavGate(
                 },
                 onUseDifferentAccount = {
                     scope.launch {
+                        // Release the underlying Firebase session too, not just the
+                        // local PIN credential - this device is giving up its claim
+                        // to that identity, so it must be free to authenticate as a
+                        // different account next.
+                        authViewModel.releaseFirebaseSession()
                         sessionManager.forgetDeviceCredential(cred.businessId)
                         localCredential = null
                     }
