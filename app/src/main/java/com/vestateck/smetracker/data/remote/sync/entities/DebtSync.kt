@@ -29,28 +29,40 @@ class DebtSync(
                 externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
-                        val remote = change.document.toObject(RemoteDebt::class.java)
+                        try {
+                            val remote = change.document.toObject(RemoteDebt::class.java)
 
-                        // Skip if the local row has an unsynced change (e.g. a
-                        // debt just marked paid offline) - see TaskSync's
-                        // attachListener for why this matters.
-                        val local = smeDao.getDebtById(remote.id)
-                        if (local != null && local.pendingSync) continue
+                            // Skip if the local row has an unsynced change (e.g. a
+                            // debt just marked paid offline) - see TaskSync's
+                            // attachListener for why this matters.
+                            val local = smeDao.getDebtById(remote.id)
+                            if (local != null && local.pendingSync) continue
 
-                        smeDao.insertDebt(
-                            Debt(
-                                id = remote.id,
-                                customerId = remote.customerId,
-                                customerName = remote.customerName,
-                                description = remote.description,
-                                amount = remote.amount,
-                                isPaid = remote.isPaid,
-                                dueDate = remote.dueDate,
-                                date = remote.date,
-                                pendingSync = false,
-                                isDeleted = remote.isDeleted
+                            smeDao.insertDebt(
+                                Debt(
+                                    id = remote.id,
+                                    customerId = remote.customerId,
+                                    customerName = remote.customerName,
+                                    description = remote.description,
+                                    amount = remote.amount,
+                                    isPaid = remote.isPaid,
+                                    dueDate = remote.dueDate,
+                                    date = remote.date,
+                                    pendingSync = false,
+                                    isDeleted = remote.isDeleted
+                                )
                             )
-                        )
+                        } catch (e: Exception) {
+                            // customerId is a real FK to customers (see Debt.kt) - if
+                            // this debt's snapshot arrives before its linked
+                            // customer's does (no ordering guarantee between two
+                            // independent listeners), the insert throws. Same race
+                            // SaleSync/StockAdjustmentSync already guard against for
+                            // their own FKs - this listener just didn't yet. Skip
+                            // this doc rather than take down the rest of the batch
+                            // (or crash the sync coroutine outright); it's retried on
+                            // the next snapshot event for this document.
+                        }
                     }
                 }
             }

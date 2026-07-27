@@ -42,24 +42,29 @@ abstract class SMEDatabase : RoomDatabase() {
     // single shared cache of whatever business's Firestore data was synced
     // most recently, not a per-business store. Firestore is the real source
     // of truth and IS properly scoped (businesses/{businessId}/...); this is
-    // purely about the on-device cache. Without clearing it here, signing out
-    // and into a different business (or creating a new one) on the same
-    // device leaves every previous business's sales/inventory/customers/etc.
-    // sitting in Room, fully visible under the new business, since no query
-    // anywhere filters by businessId. Must be called - see MainActivity's
-    // sign-out flow - before the next business's SyncEngine listeners
-    // repopulate tables from Firestore.
+    // purely about the on-device cache.
     //
-    // Deletes only rows already confirmed synced (pendingSync = 0) and
-    // leaves any pendingSync = 1 rows in place. A full clearAllTables() wipe
-    // here would silently destroy anything a worker recorded offline and
-    // hadn't gotten a chance to push before signing out. Rows left behind
-    // sync automatically on the next login via SyncEngine.attachListeners()'s
-    // existing catch-up push - no extra sync logic needed. The one accepted
-    // tradeoff: if a device is later reassigned to a different business
-    // while still holding an unsynced row, that row would sync to the wrong
-    // business on next login. Rare enough given the one-business-per-device
-    // deployment model to accept rather than engineer around.
+    // NOT called from MainActivity's sign-out flow (was, until it was
+    // determined redundant there - see git history / that file's onSignOut
+    // comment). A normal sign-out -> PIN re-login never changes
+    // SessionManager.deviceBusinessId, so it's always the SAME business's
+    // data sitting in Room and stays valid to reuse untouched. The actual
+    // cross-business risk this comment describes - a different business's
+    // data leaking into a device that switches accounts - is prevented
+    // downstream instead, by SessionManager.saveBusinessMembership()'s full
+    // clearAllTablesSuspending() wipe, which fires exactly when
+    // deviceBusinessId is null (first-ever link on this device, or right
+    // after forgetDeviceCredential() resets it on an explicit account
+    // switch). That full wipe is a superset of what this method does, so
+    // calling this one first would add nothing.
+    //
+    // Kept as a real, separately-tested method (see SMEDatabaseTest) rather
+    // than deleted, in case a future caller needs a synced-only partial
+    // clear without touching pendingSync rows - which is genuinely
+    // different behavior from clearAllTablesSuspending() below. Deletes
+    // only rows already confirmed synced (pendingSync = 0) and leaves any
+    // pendingSync = 1 rows in place, so a caller doesn't silently destroy
+    // anything a worker recorded offline and hadn't gotten a chance to push.
     suspend fun clearSyncedDataSuspending() {
         withTransaction {
             smeDao().deleteSyncedSales()

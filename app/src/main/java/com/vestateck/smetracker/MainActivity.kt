@@ -19,13 +19,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.vestateck.smetracker.data.database.SMEDatabase
 import com.vestateck.smetracker.data.remote.auth.AuthViewModel
 import com.vestateck.smetracker.data.remote.auth.BusinessRepository
 import com.vestateck.smetracker.data.remote.model.MemberRole
@@ -39,9 +37,6 @@ import com.vestateck.smetracker.ui.components.OwnerOnlyGate
 import com.vestateck.smetracker.ui.theme.SMETrackerTheme
 import com.vestateck.smetracker.viewmodel.SMEViewModel
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -52,7 +47,6 @@ class MainActivity : ComponentActivity() {
     // Field injection (not constructor injection) because ComponentActivity
     // doesn't offer a Hilt-friendly constructor hook; Hilt populates these
     // between super.onCreate() and onCreate()'s body running.
-    @Inject lateinit var database: SMEDatabase
     @Inject lateinit var sessionManager: SessionManager
     @Inject lateinit var businessRepository: BusinessRepository
     @Inject lateinit var syncEngine: SyncEngine
@@ -131,27 +125,24 @@ class MainActivity : ComponentActivity() {
                                         // signOut()'s completion callback closes that race.
                                         authViewModel.signOut {
                                             syncEngine.stop()
-                                            // Local Room storage has no businessId scoping on any
-                                            // entity (see SMEDatabase.clearSyncedDataSuspending() doc) -
-                                            // without clearing it here, the next sign-in (same device,
-                                            // any business, including a freshly created one) starts
-                                            // from whatever the previous business left behind. Only the
-                                            // already-synced cache is cleared - any row still
-                                            // pendingSync = true (recorded offline, not yet pushed) is
-                                            // left in place and syncs automatically on next login, so
-                                            // signing out mid-offline-work can't silently lose data.
-                                            // Awaited - not fire-and-forget - and `entered` only flips
-                                            // to null once the clear finishes, so AuthNavGate can't
-                                            // route into a new sign-in/business-create flow, and
-                                            // SyncEngine can't start re-populating tables for the next
-                                            // business, until the previous business's synced data is
-                                            // actually gone.
-                                            lifecycleScope.launch(Dispatchers.IO) {
-                                                database.clearSyncedDataSuspending()
-                                                withContext(Dispatchers.Main) {
-                                                    entered = null
-                                                }
-                                            }
+                                            // Room isn't clearing here on purpose. It's not
+                                            // businessId-scoped (see SMEDatabase's doc comments on
+                                            // clearSyncedDataSuspending()/clearAllTablesSuspending()),
+                                            // but that only matters if a DIFFERENT business could log
+                                            // into this device next - and SessionManager already
+                                            // handles that: saveBusinessMembership() does a full wipe
+                                            // whenever deviceBusinessId is null, which is exactly the
+                                            // "first link" and "after use a different account /
+                                            // forgetDeviceCredential()" cases. A normal same-business
+                                            // sign-out -> PIN re-login never touches deviceBusinessId,
+                                            // so the data sitting in Room is still this business's own
+                                            // data and stays valid to reuse as-is. Clearing it here too
+                                            // was redundant - same net state at any future business
+                                            // switch, since that switch does a full wipe regardless -
+                                            // and cost every sign-out a full Firestore re-download,
+                                            // which matters a lot on the GSM/2G connections this app
+                                            // targets.
+                                            entered = null
                                         }
                                     },
                                     isOwner = currentEntry.second == MemberRole.OWNER,

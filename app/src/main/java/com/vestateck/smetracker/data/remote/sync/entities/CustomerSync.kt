@@ -29,24 +29,30 @@ class CustomerSync(
                 externalScope.launch(Dispatchers.IO) {
                     for (change in snapshot.documentChanges) {
                         if (change.type == DocumentChange.Type.REMOVED) continue
-                        val remote = change.document.toObject(RemoteCustomer::class.java)
+                        try {
+                            val remote = change.document.toObject(RemoteCustomer::class.java)
 
-                        // Skip if the local row has an unsynced change - see
-                        // TaskSync's attachListener for why this matters.
-                        val local = smeDao.getCustomerById(remote.id)
-                        if (local != null && local.pendingSync) continue
+                            // Skip if the local row has an unsynced change - see
+                            // TaskSync's attachListener for why this matters.
+                            val local = smeDao.getCustomerById(remote.id)
+                            if (local != null && local.pendingSync) continue
 
-                        smeDao.insertCustomer(
-                            Customer(
-                                id = remote.id,
-                                name = remote.name,
-                                phone = remote.phone,
-                                email = remote.email,
-                                createdAt = remote.createdAt,
-                                pendingSync = false,
-                                isDeleted = remote.isDeleted
+                            smeDao.insertCustomer(
+                                Customer(
+                                    id = remote.id,
+                                    name = remote.name,
+                                    phone = remote.phone,
+                                    email = remote.email,
+                                    createdAt = remote.createdAt,
+                                    pendingSync = false,
+                                    isDeleted = remote.isDeleted
+                                )
                             )
-                        )
+                        } catch (e: Exception) {
+                            // Customer has no FK today, but same defensive pattern as
+                            // the other *Sync listeners - one bad/unexpected document
+                            // shouldn't take down the rest of this snapshot batch.
+                        }
                     }
                 }
             }
