@@ -72,13 +72,18 @@ service cloud.firestore {
       allow read, create: if isMemberOf(businessId)
         && (request.method != 'create' || request.resource.data.recordedBy == myPhone());
 
+      // A worker's sale is write-once. SaleSync.pushPending re-sends the whole
+      // doc when a checkout's push is retried after a partial failure, so an
+      // update that changes nothing is still allowed; any actual change
+      // (amount, quantity, item, payment method, isDeleted, ...) is owner-only.
+      // The app soft-deletes by pushing isDeleted = true, which is an update,
+      // so this is what stops a worker removing a sale after recording it.
       allow update: if isOwnerOf(businessId)
         || (isWorkerOf(businessId)
             && resource.data.recordedBy == myPhone()
-            && request.resource.data.recordedBy == myPhone());
+            && request.resource.data.diff(resource.data).affectedKeys().size() == 0);
 
-      allow delete: if isOwnerOf(businessId)
-        || (isWorkerOf(businessId) && resource.data.recordedBy == myPhone());
+      allow delete: if isOwnerOf(businessId);
     }
 
     match /businesses/{businessId}/saleFinancials/{saleId} {
