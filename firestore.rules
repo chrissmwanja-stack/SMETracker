@@ -93,8 +93,21 @@ service cloud.firestore {
     match /businesses/{businessId}/inventory/{itemId} {
       allow read, create: if isMemberOf(businessId);
 
+      // A worker's sale decrements quantity locally (InventoryDao.adjustStock
+      // sets pendingSync = 1), so InventorySync.pushPending pushes a LOWER
+      // quantity as a matter of course. The old "quantity >= existing" check
+      // therefore denied the normal sale path. quantity on this doc is only
+      // an informational snapshot (the real value is derived from
+      // stockAdjustments, which are validated separately below), so workers
+      // may change it freely. What they may NOT touch is anything that is
+      // owner-authoritative: sellingPrice, isDeleted (soft delete is just an
+      // update), recordedBy, id. An unchanged re-push has an empty
+      // affectedKeys set and passes.
       allow update: if isOwnerOf(businessId)
-        || (isWorkerOf(businessId) && request.resource.data.quantity >= resource.data.quantity);
+        || (isWorkerOf(businessId)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['quantity', 'updatedAt', 'imageUrl', 'name',
+                           'category', 'sku', 'reorderLevel']));
 
       allow delete: if isOwnerOf(businessId);
     }

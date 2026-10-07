@@ -146,8 +146,13 @@ class InventorySyncEmulatorTest {
         }
     }
 
+    // A worker's sale decrements quantity via InventoryDao.adjustStock, which
+    // sets pendingSync = 1, so the next pushPending sends a LOWER quantity.
+    // That is the normal sale path, so it must be accepted and clear the flag
+    // (previously the rule denied it and the row stayed pending forever,
+    // which also made the pull listener skip it).
     @Test
-    fun pushPending_workerDecreasingQuantity_isDeniedAndStaysPending() = runTest {
+    fun pushPending_workerRecordsSale_decrementIsAcceptedAndClearsPending() = runTest {
         EmulatorBusinessSeeder.signIn(emulatorRule, ownerPhone)
         val businessId = EmulatorBusinessSeeder.seedBusinessWithOwner(emulatorRule.firestore, ownerPhone)
         EmulatorBusinessSeeder.seedWorker(emulatorRule.firestore, businessId, workerPhone)
@@ -156,28 +161,57 @@ class InventorySyncEmulatorTest {
         db.inventoryDao().insert(item)
         newInventorySync().pushPending(businessId, ownerPhone, MemberRole.OWNER)
 
-        // A worker's local copy somehow ends up with a LOWER quantity than
-        // what's remote (this shouldn't normally happen now that quantity is
-        // derived from stock_adjustments — see the class doc — but the rule
-        // is still live as a backstop, so it's still worth verifying it
-        // actually holds).
         EmulatorBusinessSeeder.signIn(emulatorRule, workerPhone)
         val dbWorker = Room.inMemoryDatabaseBuilder(
             InstrumentationRegistry.getInstrumentation().targetContext,
             SMEDatabase::class.java
         ).allowMainThreadQueries().build()
         try {
-            dbWorker.inventoryDao().insert(item.copy(quantity = 3, pendingSync = true))
+            // Worker's device already holds the synced item, then sells 7.
+            dbWorker.inventoryDao().insert(item.copy(pendingSync = false))
+            dbWorker.inventoryDao().adjustStock(item.id, -7, System.currentTimeMillis())
+            assertEquals(true, dbWorker.inventoryDao().getItemById(item.id)?.pendingSync)
+
             InventorySync(dbWorker.inventoryDao(), emulatorRule.firestore, testScope)
                 .pushPending(businessId, workerPhone, MemberRole.WORKER)
 
-            // Denied by the rule -> caught by pushPending's try/catch ->
-            // left pendingSync = true, remote quantity untouched.
+            assertEquals(false, dbWorker.inventoryDao().getItemById(item.id)?.pendingSync)
+            val remoteItem = emulatorRule.firestore
+                .collection("businesses").document(businessId)
+                .collection("inventory").document(item.id).get().await()
+            assertEquals(3L, remoteItem.getLong("quantity"))
+        } finally {
+            dbWorker.close()
+        }
+    }
+
+    // The relaxed rule must still keep owner-authoritative fields owner-only:
+    // a worker changing sellingPrice (or soft-deleting) stays denied and pending.
+    @Test
+    fun pushPending_workerChangingSellingPrice_isDeniedAndStaysPending() = runTest {
+        EmulatorBusinessSeeder.signIn(emulatorRule, ownerPhone)
+        val businessId = EmulatorBusinessSeeder.seedBusinessWithOwner(emulatorRule.firestore, ownerPhone)
+        EmulatorBusinessSeeder.seedWorker(emulatorRule.firestore, businessId, workerPhone)
+
+        val item = InventoryItem(name = "Sugar 1kg", quantity = 10, sellingPrice = 5000.0, pendingSync = true)
+        db.inventoryDao().insert(item)
+        newInventorySync().pushPending(businessId, ownerPhone, MemberRole.OWNER)
+
+        EmulatorBusinessSeeder.signIn(emulatorRule, workerPhone)
+        val dbWorker = Room.inMemoryDatabaseBuilder(
+            InstrumentationRegistry.getInstrumentation().targetContext,
+            SMEDatabase::class.java
+        ).allowMainThreadQueries().build()
+        try {
+            dbWorker.inventoryDao().insert(item.copy(sellingPrice = 1.0, pendingSync = true))
+            InventorySync(dbWorker.inventoryDao(), emulatorRule.firestore, testScope)
+                .pushPending(businessId, workerPhone, MemberRole.WORKER)
+
             assertEquals(true, dbWorker.inventoryDao().getItemById(item.id)?.pendingSync)
             val remoteItem = emulatorRule.firestore
                 .collection("businesses").document(businessId)
                 .collection("inventory").document(item.id).get().await()
-            assertEquals(10L, remoteItem.getLong("quantity"))
+            assertEquals(5000.0, remoteItem.getDouble("sellingPrice"))
         } finally {
             dbWorker.close()
         }
