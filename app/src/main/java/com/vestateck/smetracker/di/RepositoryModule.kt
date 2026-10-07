@@ -36,7 +36,7 @@ object RepositoryModule {
                 auth.useEmulator("10.0.2.2", 9099)
                 auth.firebaseAuthSettings.setAppVerificationDisabledForTesting(true)
             } catch (e: Exception) {
-                Log.w(TAG, "FirebaseAuth emulator already set or failed: \${e.message}")
+                Log.w(TAG, "FirebaseAuth emulator already set or failed: ${e.message}")
             }
         }
         return auth
@@ -51,7 +51,7 @@ object RepositoryModule {
                 Log.i(TAG, "Configuring FirebaseFirestore for emulator (10.0.2.2:8080)")
                 firestore.useEmulator("10.0.2.2", 8080)
             } catch (e: Exception) {
-                Log.w(TAG, "FirebaseFirestore emulator already set or failed: \${e.message}")
+                Log.w(TAG, "FirebaseFirestore emulator already set or failed: ${e.message}")
             }
         }
         return firestore

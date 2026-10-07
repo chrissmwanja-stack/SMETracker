@@ -1,7 +1,10 @@
 package com.vestateck.smetracker.testutil
 
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.os.ParcelFileDescriptor
 import android.util.Log
+import androidx.test.platform.app.InstrumentationRegistry
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseException
 import com.google.firebase.auth.FirebaseAuth
@@ -22,6 +25,8 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
@@ -29,6 +34,7 @@ import kotlin.coroutines.resumeWithException
 import kotlin.time.Duration.Companion.seconds
 
 private const val TAG = "FirebaseEmulatorRule"
+private const val LOCAL_NETWORK_PERMISSION = "android.permission.ACCESS_LOCAL_NETWORK"
 
 /**
  * Points FirebaseAuth and FirebaseFirestore at the Local Emulator Suite
@@ -40,6 +46,10 @@ private const val TAG = "FirebaseEmulatorRule"
  * - Firestore: 8080
  *
  * From an Android emulator/AVD, use 10.0.2.2 to reach the host machine.
+ *
+ * Android 17+ (targetSdk 37) blocks sockets to local-network addresses such as
+ * 10.0.2.2 unless the app holds ACCESS_LOCAL_NETWORK. The permission is declared
+ * in src/debug/AndroidManifest.xml and granted here before the first connection.
  */
 class FirebaseEmulatorRule(
     private val emulatorHost: String = "10.0.2.2",
@@ -78,6 +88,9 @@ class FirebaseEmulatorRule(
 
         Log.d(TAG, "Starting test: ${description.methodName}")
 
+        // Must happen before any socket to 10.0.2.2 is opened.
+        grantLocalNetworkPermission()
+
         configureFirebaseEmulators()
 
         // ALWAYS ensure app verification is disabled, even if emulators were already
@@ -94,13 +107,15 @@ class FirebaseEmulatorRule(
         // Fail fast if emulator is unreachable to avoid confusing FirebaseAuth
         // Play Integrity/reCAPTCHA errors later.
         try {
-            val response = blockingHttp("GET", authEmulatorUrl(""))
+            // Root URL returns 200 {"authEmulator":{"ready":true}}. Do NOT GET /accounts: it is DELETE-only (405).
+            val response = blockingHttp("GET", "http://$emulatorHost:$authPort/")
             Log.i(TAG, "Auth emulator reachable at $emulatorHost:$authPort. Response: $response")
         } catch (e: Exception) {
             val msg = "Firebase Auth emulator is NOT reachable at $emulatorHost:$authPort. " +
                     "1. Run 'firebase emulators:start --only auth,firestore' on your host machine. " +
                     "2. Ensure firebase.json has host 0.0.0.0. " +
                     "3. Check your firewall settings. " +
+                    "4. On Android 17+, ensure ACCESS_LOCAL_NETWORK is declared in the debug manifest. " +
                     "Error: ${e.message}"
 
             Log.e(TAG, msg, e)
@@ -125,8 +140,39 @@ class FirebaseEmulatorRule(
     }
 
     /**
-     * This is the important part for your failure.
+     * Android 17 (API 37) blocks local-network sockets for apps targeting 37+
+     * unless ACCESS_LOCAL_NETWORK is granted. The adb shell is exempt, which is why
+     * `adb shell nc 10.0.2.2 9099` works while the app's own connection times out.
      *
+     * Harmless on older Android: the grant simply fails or is not needed.
+     */
+    private fun grantLocalNetworkPermission() {
+        try {
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            val context = instrumentation.targetContext
+            val pkg = context.packageName
+
+            if (context.checkSelfPermission(LOCAL_NETWORK_PERMISSION) ==
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                Log.d(TAG, "ACCESS_LOCAL_NETWORK already granted")
+                return
+            }
+
+            val pfd = instrumentation.uiAutomation
+                .executeShellCommand("pm grant $pkg $LOCAL_NETWORK_PERMISSION")
+            // Drain the output so the command has finished before we continue.
+            ParcelFileDescriptor.AutoCloseInputStream(pfd).use { it.readBytes() }
+
+            val granted = context.checkSelfPermission(LOCAL_NETWORK_PERMISSION) ==
+                    PackageManager.PERMISSION_GRANTED
+            Log.i(TAG, "ACCESS_LOCAL_NETWORK granted=$granted")
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not grant ACCESS_LOCAL_NETWORK (fine on older Android): ${e.message}")
+        }
+    }
+
+    /**
      * Without auth.useEmulator(...), FirebaseAuth will attempt the real
      * production phone-auth flow, which triggers Play Integrity/reCAPTCHA
      * and causes:
@@ -155,6 +201,16 @@ class FirebaseEmulatorRule(
 
     /**
      * Runs a real verifyPhoneNumber() flow against the Auth emulator.
+     *
+     * Time budget: the outer withTimeout is (timeoutSeconds + 10)s, and code polling
+     * is capped at CODE_POLL_TIMEOUT_MS, so a slow poll can never eat the whole budget
+     * silently; it fails with a message saying what the emulator returned.
+     *
+     * Session reuse: the Firebase Auth SDK reuses an open verification session for the
+     * same phone number for up to timeoutSeconds. Back-to-back tests using the same
+     * number would then get onCodeSent instantly with the OLD verificationId and the
+     * emulator would never generate a new code (its state was just cleared). Passing
+     * the previous ForceResendingToken forces a real backend call every time.
      */
     suspend fun signInWithPhoneNumber(
         phoneNumber: String,
@@ -162,6 +218,11 @@ class FirebaseEmulatorRule(
         timeoutSeconds: Long = 30L
     ): FirebaseUser = withContext(Dispatchers.IO) {
         Log.d(TAG, "signInWithPhoneNumber started for $phoneNumber")
+
+        // Codes already recorded for this number (from earlier sign-ins in the same
+        // emulator session). They must never be mistaken for the one we're about to
+        // request, so snapshot them before calling verifyPhoneNumber.
+        val staleCodes = snapshotCodesFor(phoneNumber)
 
         withTimeout((timeoutSeconds + 10).seconds) {
             val credential = suspendCancellableCoroutine { cont ->
@@ -187,13 +248,17 @@ class FirebaseEmulatorRule(
                         verificationId: String,
                         token: PhoneAuthProvider.ForceResendingToken
                     ) {
+                        // Remember the token so the next sign-in with this number can
+                        // force a fresh send instead of reusing this session.
+                        resendTokens[phoneNumber] = token
+
                         Log.d(TAG, "onCodeSent: $verificationId")
 
-                        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+                        val executor = Executors.newSingleThreadExecutor()
 
                         executor.execute {
                             try {
-                                val code = fetchVerificationCode(phoneNumber)
+                                val code = fetchVerificationCode(phoneNumber, exclude = staleCodes)
                                 Log.d(TAG, "Fetched emulator verification code: $code")
 
                                 if (cont.isActive) {
@@ -215,16 +280,29 @@ class FirebaseEmulatorRule(
                             }
                         }
                     }
+
+                    override fun onCodeAutoRetrievalTimeOut(verificationId: String) {
+                        // Diagnostic only: tells you in logcat that the SMS-retriever
+                        // phase ended for this verification.
+                        Log.d(TAG, "onCodeAutoRetrievalTimeOut: $verificationId")
+                    }
                 }
+
+                val previousToken = resendTokens[phoneNumber]
 
                 val options = PhoneAuthOptions.newBuilder(auth)
                     .setPhoneNumber(phoneNumber)
                     .setTimeout(timeoutSeconds, TimeUnit.SECONDS)
                     .setActivity(activity)
                     .setCallbacks(callbacks)
+                    .apply { previousToken?.let { setForceResendingToken(it) } }
                     .build()
 
-                Log.d(TAG, "Calling PhoneAuthProvider.verifyPhoneNumber...")
+                Log.d(
+                    TAG,
+                    "Calling PhoneAuthProvider.verifyPhoneNumber for $phoneNumber " +
+                            "(forceResend=${previousToken != null})..."
+                )
 
                 activity.runOnUiThread {
                     PhoneAuthProvider.verifyPhoneNumber(options)
@@ -241,40 +319,73 @@ class FirebaseEmulatorRule(
         }
     }
 
-    private fun fetchVerificationCode(
-        phoneNumber: String,
-        retries: Int = 10
-    ): String {
-        Log.d(TAG, "Polling emulator for verification code for $phoneNumber...")
+    /**
+     * Returns every code the Auth emulator currently has recorded for [phoneNumber].
+     * Best-effort: any failure yields an empty set.
+     */
+    private fun snapshotCodesFor(phoneNumber: String): Set<String> {
+        return try {
+            val body = blockingHttp("GET", authEmulatorUrl("verificationCodes"), maxRetries = 1)
+            codesFor(body, phoneNumber).toSet()
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not snapshot existing codes for $phoneNumber: ${e.message}")
+            emptySet()
+        }
+    }
 
-        repeat(retries) { attempt ->
-            try {
-                val body = blockingHttp("GET", authEmulatorUrl("verificationCodes"))
-                val codes = JSONObject(body).optJSONArray("verificationCodes")
-
-                if (codes != null) {
-                    for (i in codes.length() - 1 downTo 0) {
-                        val entry = codes.getJSONObject(i)
-
-                        if (entry.optString("phoneNumber") == phoneNumber) {
-                            val code = entry.optString("code")
-
-                            if (code.isNotBlank()) {
-                                return code
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Poll attempt ${attempt + 1} failed: ${e.message}")
-            }
-
-            if (attempt < retries - 1) {
-                Thread.sleep(500)
+    private fun codesFor(body: String, phoneNumber: String): List<String> {
+        val codes = JSONObject(body).optJSONArray("verificationCodes") ?: return emptyList()
+        val out = ArrayList<String>()
+        for (i in 0 until codes.length()) {
+            val entry = codes.getJSONObject(i)
+            if (entry.optString("phoneNumber") == phoneNumber) {
+                val code = entry.optString("code")
+                if (code.isNotBlank()) out.add(code)
             }
         }
+        return out
+    }
 
-        error("No verification code recorded for $phoneNumber after $retries attempts")
+    /**
+     * Polls the Auth emulator until a code for [phoneNumber] appears that is not in
+     * [exclude], or until [timeoutMs] elapses. One HTTP attempt per poll (the loop is
+     * the retry), so total time is bounded by [timeoutMs] plus one connection timeout.
+     * On failure, the message includes the last response body and last error so the
+     * cause (empty list vs. connection trouble) is visible without digging in logcat.
+     */
+    private fun fetchVerificationCode(
+        phoneNumber: String,
+        exclude: Set<String> = emptySet(),
+        timeoutMs: Long = CODE_POLL_TIMEOUT_MS
+    ): String {
+        Log.d(TAG, "Polling emulator for verification code for $phoneNumber (excluding ${exclude.size} stale)...")
+
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var attempt = 0
+        var lastBody = "<no response>"
+        var lastError = "none"
+
+        while (System.currentTimeMillis() < deadline) {
+            attempt++
+            try {
+                val body = blockingHttp("GET", authEmulatorUrl("verificationCodes"), maxRetries = 1)
+                lastBody = body
+
+                // Newest first; skip anything that existed before this sign-in began.
+                val fresh = codesFor(body, phoneNumber).asReversed().firstOrNull { it !in exclude }
+                if (fresh != null) return fresh
+            } catch (e: Exception) {
+                lastError = e.message ?: e.javaClass.simpleName
+                Log.w(TAG, "Poll attempt $attempt failed: $lastError")
+            }
+
+            Thread.sleep(500)
+        }
+
+        error(
+            "No verification code for $phoneNumber after $attempt polls " +
+                    "(${timeoutMs}ms). Last body: $lastBody. Last error: $lastError"
+        )
     }
 
     private fun authEmulatorUrl(path: String): String {
@@ -287,46 +398,58 @@ class FirebaseEmulatorRule(
 
     private fun blockingHttp(
         method: String,
-        urlString: String
+        urlString: String,
+        maxRetries: Int = 3
     ): String {
-        val connection = URL(urlString).openConnection() as HttpURLConnection
+        var lastException: Exception? = null
+        for (attempt in 1..maxRetries) {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = URL(urlString).openConnection() as HttpURLConnection
+                connection.requestMethod = method
+                connection.connectTimeout = 5_000
+                connection.readTimeout = 5_000
+                connection.useCaches = false
+                connection.instanceFollowRedirects = false
 
-        return try {
-            connection.requestMethod = method
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 15_000
+                val responseCode = connection.responseCode
 
-            val responseCode = try {
-                connection.responseCode
-            } catch (e: Exception) {
-                throw IllegalStateException(
-                    "Failed to connect to emulator at $urlString. Error: ${e.message}",
-                    e
-                )
-            }
+                if (responseCode !in 200..299 && method != "DELETE") {
+                    val errorBody = connection.errorStream?.let {
+                        BufferedReader(InputStreamReader(it)).readAllText()
+                    } ?: "no error body"
 
-            if (responseCode !in 200..299 && method != "DELETE") {
-                val errorBody = connection.errorStream?.let {
+                    throw IllegalStateException(
+                        "Emulator at $urlString returned HTTP $responseCode: $errorBody"
+                    )
+                }
+
+                val stream = if (responseCode in 200..299) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream
+                }
+
+                return stream?.let {
                     BufferedReader(InputStreamReader(it)).readAllText()
-                } ?: "no error body"
-
-                throw IllegalStateException(
-                    "Emulator at $urlString returned HTTP $responseCode: $errorBody"
-                )
+                } ?: "{}"
+            } catch (e: Exception) {
+                lastException = e
+                if (attempt < maxRetries) {
+                    try {
+                        Thread.sleep(500)
+                    } catch (_: InterruptedException) {
+                    }
+                }
+            } finally {
+                connection?.disconnect()
             }
-
-            val stream = if (responseCode in 200..299) {
-                connection.inputStream
-            } else {
-                connection.errorStream
-            }
-
-            stream?.let {
-                BufferedReader(InputStreamReader(it)).readAllText()
-            } ?: "{}"
-        } finally {
-            connection.disconnect()
         }
+
+        throw IllegalStateException(
+            "Failed to connect to emulator at $urlString after $maxRetries attempts. Error: ${lastException?.message}",
+            lastException
+        )
     }
 
     private fun BufferedReader.readAllText(): String {
@@ -335,5 +458,14 @@ class FirebaseEmulatorRule(
 
     companion object {
         private val emulatorsConfigured = AtomicBoolean(false)
+
+        // Last resend token per phone number. Passing it to verifyPhoneNumber() forces the
+        // SDK to hit the backend (and so the emulator) instead of reusing the still-open
+        // verification session from the previous test.
+        private val resendTokens =
+            ConcurrentHashMap<String, PhoneAuthProvider.ForceResendingToken>()
+
+        // Must stay comfortably below signInWithPhoneNumber's withTimeout (40s by default).
+        private const val CODE_POLL_TIMEOUT_MS = 20_000L
     }
 }

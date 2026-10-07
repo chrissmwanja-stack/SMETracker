@@ -293,5 +293,24 @@ class SaleSyncEmulatorTest {
         } catch (e: FirebaseFirestoreException) {
             assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, e.code)
         }
+        @Test
+        fun pushPending_workerRepushOfUnchangedSale_isAcceptedByRules() = runTest {
+            EmulatorBusinessSeeder.signIn(emulatorRule, ownerPhone)
+            val businessId = EmulatorBusinessSeeder.seedBusinessWithOwner(emulatorRule.firestore, ownerPhone)
+            EmulatorBusinessSeeder.seedWorker(emulatorRule.firestore, businessId, workerPhone)
+            EmulatorBusinessSeeder.signIn(emulatorRule, workerPhone)
+
+            val sale = insertPendingSale(provisionalReceiptNumber = "0771-000006", recordedBy = workerPhone)
+            newSaleSync().pushPending(businessId, workerPhone, MemberRole.WORKER)
+
+            // Simulate a retry: the row is still pending, so the whole doc is sent again.
+            val pushed = db.smeDao().getSaleById(sale.id)!!
+            db.smeDao().insertSale(pushed.copy(pendingSync = true))
+            newSaleSync().pushPending(businessId, workerPhone, MemberRole.WORKER)
+
+            assertEquals(false, db.smeDao().getSaleById(sale.id)?.pendingSync)
+        }
+
+
     }
 }
