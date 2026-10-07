@@ -5,6 +5,8 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.vestateck.smetracker.data.dao.LocalCredentialDao
@@ -12,6 +14,7 @@ import com.vestateck.smetracker.data.database.SMEDatabase
 import com.vestateck.smetracker.data.entities.LocalCredential
 import com.vestateck.smetracker.data.remote.model.MemberRole
 import com.vestateck.smetracker.utils.PinHasher
+import com.vestateck.smetracker.utils.PinLockoutPolicy
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -46,6 +49,24 @@ private object Keys {
     // data connection. Only forgetDeviceCredential() clears it, e.g. when the
     // user explicitly chooses "use a different number" or forgets their PIN.
     val DEVICE_BUSINESS_ID = stringPreferencesKey("device_business_id")
+
+    // Offline-PIN brute-force protection (see PinLockoutPolicy). Kept in the same
+    // DataStore file as the session, which is excluded from Android backup, and
+    // deliberately NOT cleared by clearSession(), so signing out and back in
+    // can't be used to reset the failure counter.
+    val PIN_FAILURES = intPreferencesKey("pin_failures")
+    val PIN_LOCKED_UNTIL = longPreferencesKey("pin_locked_until")
+}
+
+/** Result of one PIN entry attempt via [SessionManager.attemptPinLogin]. */
+sealed interface PinAttemptResult {
+    data object Success : PinAttemptResult
+    /** Wrong PIN. [attemptsBeforeLockout] is how many more tries before a temporary lock (0 = now locked). */
+    data class Wrong(val attemptsBeforeLockout: Int, val lockedForMs: Long) : PinAttemptResult
+    /** Still locked from earlier failures; the PIN was not checked. */
+    data class LockedOut(val remainingMs: Long) : PinAttemptResult
+    /** Too many failures: the device PIN was erased and a full OTP sign-in is required. */
+    data object TooManyAttempts : PinAttemptResult
 }
 
 class SessionManager(
@@ -159,6 +180,8 @@ class SessionManager(
         )
         context.sessionDataStore.edit { prefs ->
             prefs[Keys.DEVICE_BUSINESS_ID] = businessId
+            prefs.remove(Keys.PIN_FAILURES)
+            prefs.remove(Keys.PIN_LOCKED_UNTIL)
         }
     }
 
@@ -171,6 +194,60 @@ class SessionManager(
         return PinHasher.verify(enteredPin, cred.pinSalt, cred.pinHash)
     }
 
+    /**
+     * PIN entry with brute-force protection. Use this (not [verifyPinOffline])
+     * from any UI that accepts a typed PIN.
+     *
+     * After [PinLockoutPolicy.FREE_ATTEMPTS] consecutive wrong PINs the device locks
+     * for an escalating delay; after [PinLockoutPolicy.MAX_ATTEMPTS] the stored PIN
+     * credential is erased, so the user must complete a full online OTP sign-in.
+     * A correct PIN resets the counter. State lives in DataStore and survives
+     * process death and sign-out. [now] is injectable for tests.
+     */
+    suspend fun attemptPinLogin(
+        businessId: String,
+        enteredPin: String,
+        now: Long = System.currentTimeMillis()
+    ): PinAttemptResult {
+        val prefs = context.sessionDataStore.data
+            .catch { e -> if (e is IOException) emit(emptyPreferences()) else throw e }
+            .first()
+        val lockedUntil = prefs[Keys.PIN_LOCKED_UNTIL] ?: 0L
+        if (lockedUntil > now) {
+            // Clamp so a clock set backwards can't produce an absurd wait.
+            return PinAttemptResult.LockedOut(
+                (lockedUntil - now).coerceAtMost(PinLockoutPolicy.MAX_LOCK_MS)
+            )
+        }
+
+        if (verifyPinOffline(businessId, enteredPin)) {
+            context.sessionDataStore.edit {
+                it.remove(Keys.PIN_FAILURES)
+                it.remove(Keys.PIN_LOCKED_UNTIL)
+            }
+            return PinAttemptResult.Success
+        }
+
+        val failures = (prefs[Keys.PIN_FAILURES] ?: 0) + 1
+        if (PinLockoutPolicy.shouldEraseCredential(failures)) {
+            forgetDeviceCredential(businessId) // also clears the counters
+            return PinAttemptResult.TooManyAttempts
+        }
+        val lockMs = PinLockoutPolicy.lockDurationMs(failures)
+        context.sessionDataStore.edit {
+            it[Keys.PIN_FAILURES] = failures
+            if (lockMs > 0) {
+                it[Keys.PIN_LOCKED_UNTIL] = now + lockMs
+            } else {
+                it.remove(Keys.PIN_LOCKED_UNTIL)
+            }
+        }
+        return PinAttemptResult.Wrong(
+            attemptsBeforeLockout = PinLockoutPolicy.attemptsBeforeLockout(failures),
+            lockedForMs = lockMs
+        )
+    }
+
     /** "Use a different number" / "forgot PIN" - removes offline PIN login for this business. */
     suspend fun forgetDeviceCredential(businessId: String) {
         localCredentialDao.deleteByBusinessId(businessId)
@@ -178,6 +255,8 @@ class SessionManager(
             if (prefs[Keys.DEVICE_BUSINESS_ID] == businessId) {
                 prefs.remove(Keys.DEVICE_BUSINESS_ID)
             }
+            prefs.remove(Keys.PIN_FAILURES)
+            prefs.remove(Keys.PIN_LOCKED_UNTIL)
         }
     }
 }

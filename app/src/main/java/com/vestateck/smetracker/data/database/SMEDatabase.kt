@@ -27,7 +27,7 @@ import com.vestateck.smetracker.data.entities.Task
 @Database(
     entities = [Sale::class, Customer::class, Debt::class, InventoryItem::class, Expense::class, Task::class, StockAdjustment::class, LocalCredential::class],
     version = 17,
-    exportSchema = false
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class SMEDatabase : RoomDatabase() {
@@ -257,10 +257,13 @@ abstract class SMEDatabase : RoomDatabase() {
                     "sme_tracker_database"
                 )
                     .addMigrations(MIGRATION_5_6, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
-                    // Safety net for older installs with no migration path defined (v1-v4).
-                    // Any new schema change from here on should get its own Migration above
-                    // instead of relying on this, or existing user data will be wiped on upgrade.
-                    .fallbackToDestructiveMigration(true)
+                    // Only installs from before the first real Migration (v1-v4, and v5-v8 which
+                    // have no complete path to v9) may be wiped. Every version from v9 onward has
+                    // a Migration chain up to the current version, so an upgrade from those that
+                    // hits a missing Migration now fails loudly instead of silently deleting
+                    // local data, including unsynced (pendingSync) rows.
+                    // Any new schema change must add its own Migration above.
+                    .fallbackToDestructiveMigrationFrom(true, 1, 2, 3, 4, 5, 6, 7, 8)
                     .build()
                 INSTANCE = instance
                 instance

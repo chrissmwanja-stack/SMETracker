@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -103,5 +104,63 @@ class SessionManagerTest {
         val state = sessionManager.sessionState.first()
         assertEquals("biz-new", state.businessId)
         assertEquals(MemberRole.OWNER, state.role)
+    }
+
+    // ---- PIN lockout (attemptPinLogin) ----
+
+    private suspend fun savePin(pin: String = "1234") {
+        sessionManager.savePinAfterOnlineVerification(
+            businessId = "biz-pin",
+            phoneNumberE164 = "+15555550101",
+            role = MemberRole.OWNER,
+            firebaseUid = "uid-pin",
+            pin = pin
+        )
+    }
+
+    @Test
+    fun correctPinSucceedsAndResetsFailureCount() = runTest {
+        savePin()
+        val t0 = 1_000_000L
+        repeat(3) { assertTrue(sessionManager.attemptPinLogin("biz-pin", "0000", t0) is PinAttemptResult.Wrong) }
+
+        assertEquals(PinAttemptResult.Success, sessionManager.attemptPinLogin("biz-pin", "1234", t0))
+
+        // Counter was reset, so four more wrong tries still don't lock.
+        repeat(4) {
+            val r = sessionManager.attemptPinLogin("biz-pin", "0000", t0)
+            assertTrue(r is PinAttemptResult.Wrong && r.lockedForMs == 0L)
+        }
+    }
+
+    @Test
+    fun fifthWrongPinLocksAndBlocksEvenTheCorrectPin() = runTest {
+        savePin()
+        val t0 = 1_000_000L
+        repeat(4) { sessionManager.attemptPinLogin("biz-pin", "0000", t0) }
+
+        val fifth = sessionManager.attemptPinLogin("biz-pin", "0000", t0)
+        assertTrue(fifth is PinAttemptResult.Wrong && fifth.lockedForMs == 30_000L)
+
+        val duringLock = sessionManager.attemptPinLogin("biz-pin", "1234", t0 + 10_000L)
+        assertTrue(duringLock is PinAttemptResult.LockedOut)
+
+        val afterLock = sessionManager.attemptPinLogin("biz-pin", "1234", t0 + 31_000L)
+        assertEquals(PinAttemptResult.Success, afterLock)
+    }
+
+    @Test
+    fun tenthWrongPinErasesTheStoredCredential() = runTest {
+        savePin()
+        var now = 1_000_000L
+        var last: PinAttemptResult = PinAttemptResult.Success
+        repeat(10) {
+            now += 20 * 60_000L // always past any lock window
+            last = sessionManager.attemptPinLogin("biz-pin", "0000", now)
+        }
+
+        assertEquals(PinAttemptResult.TooManyAttempts, last)
+        assertNull(sessionManager.getLocalCredential("biz-pin"))
+        assertNull(sessionManager.deviceBusinessId.first())
     }
 }

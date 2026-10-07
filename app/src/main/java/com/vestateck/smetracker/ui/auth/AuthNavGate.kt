@@ -19,6 +19,7 @@ import com.vestateck.smetracker.data.entities.LocalCredential
 import com.vestateck.smetracker.data.remote.auth.AuthViewModel
 import com.vestateck.smetracker.data.remote.auth.BusinessRepository
 import com.vestateck.smetracker.data.remote.auth.SessionManager
+import com.vestateck.smetracker.data.remote.auth.PinAttemptResult
 import com.vestateck.smetracker.data.remote.model.MemberRole
 
 /**
@@ -154,15 +155,30 @@ fun AuthNavGate(
                     scope.launch {
                         verifyingPin = true
                         pinError = null
-                        val ok = sessionManager.verifyPinOffline(cred.businessId, pin)
+                        val result = sessionManager.attemptPinLogin(cred.businessId, pin)
                         verifyingPin = false
-                        if (ok) {
-                            val role = MemberRole.fromString(cred.role) ?: MemberRole.WORKER
-                            sessionManager.savePhoneNumber(cred.phoneNumberE164)
-                            sessionManager.saveBusinessMembership(cred.businessId, role)
-                            onEnterApp(cred.businessId, role)
-                        } else {
-                            pinError = "Incorrect PIN. Try again."
+                        when (result) {
+                            is PinAttemptResult.Success -> {
+                                val role = MemberRole.fromString(cred.role) ?: MemberRole.WORKER
+                                sessionManager.savePhoneNumber(cred.phoneNumberE164)
+                                sessionManager.saveBusinessMembership(cred.businessId, role)
+                                onEnterApp(cred.businessId, role)
+                            }
+                            is PinAttemptResult.LockedOut ->
+                                pinError = "Too many wrong PINs. Try again in ${formatWait(result.remainingMs)}."
+                            is PinAttemptResult.Wrong -> pinError = when {
+                                result.lockedForMs > 0 ->
+                                    "Incorrect PIN. Locked for ${formatWait(result.lockedForMs)}."
+                                else ->
+                                    "Incorrect PIN. ${result.attemptsBeforeLockout} tries left before a temporary lock."
+                            }
+                            is PinAttemptResult.TooManyAttempts -> {
+                                // The PIN was erased; release the Firebase session as well
+                                // (same as "use a different account") and require OTP.
+                                authViewModel.releaseFirebaseSession()
+                                localCredential = null
+                                sessionExpired = true
+                            }
                         }
                     }
                 },
@@ -248,4 +264,9 @@ fun AuthNavGate(
             }
         }
     }
+}
+
+private fun formatWait(ms: Long): String {
+    val seconds = (ms + 999) / 1000
+    return if (seconds < 60) "$seconds s" else "${(seconds + 59) / 60} min"
 }

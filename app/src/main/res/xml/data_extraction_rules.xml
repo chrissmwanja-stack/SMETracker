@@ -11,8 +11,30 @@
         matching live Firebase Auth session. See SessionManager.kt.
         -->
         <exclude domain="file" path="datastore/sme_session.preferences_pb"/>
+        <!--
+        The Room database holds local_credentials (PIN hash + salt) plus cached
+        business data. It is excluded so the PIN hash never leaves the device via
+        Google backup or device transfer, where it could be attacked offline. After a
+        restore the user signs in with OTP and Firestore sync repopulates the data.
+        Room's -wal/-shm/-journal sidecar files are excluded too.
+        -->
+        <exclude domain="database" path="sme_tracker_database"/>
+        <exclude domain="database" path="sme_tracker_database-wal"/>
+        <exclude domain="database" path="sme_tracker_database-shm"/>
+        <exclude domain="database" path="sme_tracker_database-journal"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="datastore/sme_session.preferences_pb"/>
+        <!--
+        The Room database holds local_credentials (PIN hash + salt) plus cached
+        business data. It is excluded so the PIN hash never leaves the device via
+        Google backup or device transfer, where it could be attacked offline. After a
+        restore the user signs in with OTP and Firestore sync repopulates the data.
+        Room's -wal/-shm/-journal sidecar files are excluded too.
+        -->
+        <exclude domain="database" path="sme_tracker_database"/>
+        <exclude domain="database" path="sme_tracker_database-wal"/>
+        <exclude domain="database" path="sme_tracker_database-shm"/>
+        <exclude domain="database" path="sme_tracker_database-journal"/>
     </device-transfer>
 </data-extraction-rules>

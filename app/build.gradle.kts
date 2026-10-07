@@ -31,11 +31,10 @@ android {
         applicationId = "com.vestateck.smetracker"
         minSdk = 24
         targetSdk = 37
-        versionCode = 3
-        versionName = "1.0.0"
+        versionCode = 4
+        versionName = "1.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-
     signingConfigs {
         if (keystorePropertiesFile.exists()) {
             create("release") {
@@ -71,6 +70,12 @@ android {
         buildConfig = true
     }
 } // android block ends here
+
+// Export Room schemas (SMEDatabase has exportSchema = true) so migrations can be
+// reviewed and tested. Commit the generated app/schemas/ folder.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
 
 // configurations are OUTSIDE android block
 configurations {
