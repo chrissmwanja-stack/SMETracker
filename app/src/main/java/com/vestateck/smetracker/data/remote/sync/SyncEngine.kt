@@ -1,6 +1,7 @@
 package com.vestateck.smetracker.data.remote.sync
 
 import android.content.Context
+import android.util.Log
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -25,6 +26,8 @@ import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+private const val TAG = "SyncEngine"
 
 /**
  * Orchestrates bidirectional synchronization between local Room DB and Cloud Firestore.
@@ -59,6 +62,11 @@ class SyncEngine(
                 .distinctUntilChangedBy { it.businessId }
                 .collect { session ->
                     val businessId = session.businessId ?: return@collect
+                    // Never sync while Room holds another business's rows.
+                    if (!sessionManager.isDataOwnedBy(businessId)) {
+                        Log.w(TAG, "Local data belongs to a different business; not attaching listeners")
+                        return@collect
+                    }
                     attachListeners(businessId, session.role, session.phoneNumberE164)
                 }
         }
@@ -116,6 +124,7 @@ class SyncEngine(
     private suspend fun pushAllPending() {
         val session = sessionManager.sessionState.first()
         val businessId = session.businessId ?: return
+        if (!sessionManager.isDataOwnedBy(businessId)) return
         val myPhone = session.phoneNumberE164 ?: return
         val role = session.role ?: return
 

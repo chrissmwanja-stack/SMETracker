@@ -44,19 +44,11 @@ abstract class SMEDatabase : RoomDatabase() {
     // of truth and IS properly scoped (businesses/{businessId}/...); this is
     // purely about the on-device cache.
     //
-    // NOT called from MainActivity's sign-out flow (was, until it was
-    // determined redundant there - see git history / that file's onSignOut
-    // comment). A normal sign-out -> PIN re-login never changes
-    // SessionManager.deviceBusinessId, so it's always the SAME business's
-    // data sitting in Room and stays valid to reuse untouched. The actual
-    // cross-business risk this comment describes - a different business's
-    // data leaking into a device that switches accounts - is prevented
-    // downstream instead, by SessionManager.saveBusinessMembership()'s full
-    // clearAllTablesSuspending() wipe, which fires exactly when
-    // deviceBusinessId is null (first-ever link on this device, or right
-    // after forgetDeviceCredential() resets it on an explicit account
-    // switch). That full wipe is a superset of what this method does, so
-    // calling this one first would add nothing.
+    // NOT called from MainActivity's sign-out flow. Cross-business leakage is
+    // prevented by SessionManager's data-owner marker instead:
+    // saveBusinessMembership() wipes everything (clearAllTablesSuspending) when a
+    // different business links, and keeps the data when the same business signs
+    // back in, so a normal sign-out -> re-login reuses Room untouched.
     //
     // Kept as a real, separately-tested method (see SMEDatabaseTest) rather
     // than deleted, in case a future caller needs a synced-only partial
@@ -77,13 +69,12 @@ abstract class SMEDatabase : RoomDatabase() {
         }
     }
 
-    // Full wipe of every local table - used once, the very first time a
-    // device links to a business (see SessionManager.saveBusinessMembership()),
-    // to discard any local Room data that predates that link: leftover
-    // dev/test rows, or anything recorded before Firebase Auth was wired up.
-    // Unlike clearSyncedDataSuspending() above, this isn't pendingSync-aware -
-    // none of that data can be pendingSync for a business relationship that
-    // never existed, so there's nothing worth preserving here.
+    // Full wipe of every local table - used by SessionManager.saveBusinessMembership()
+    // when the business being linked is not the one that owns the rows in Room (a
+    // first-ever link, leftover dev/test rows, or a different business). Unlike
+    // clearSyncedDataSuspending() above, this isn't pendingSync-aware: rows
+    // belonging to another business cannot be pushed to the new one, so there's
+    // nothing correct to preserve.
     //
     // RoomDatabase.clearAllTables() manages its own locking and must be
     // called outside of a transaction - not wrapped in withTransaction like

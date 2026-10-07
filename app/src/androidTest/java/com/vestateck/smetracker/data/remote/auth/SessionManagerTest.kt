@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -58,6 +59,7 @@ class SessionManagerTest {
     private suspend fun resetSessionState() {
         sessionManager.deviceBusinessId.first()?.let { sessionManager.forgetDeviceCredential(it) }
         sessionManager.clearSession()
+        sessionManager.clearLocalDataOwner()
     }
 
     @Test
@@ -73,28 +75,69 @@ class SessionManagerTest {
     }
 
     @Test
-    fun doesNotWipeLocalDataWhenDeviceAlreadyLinkedBusiness() = runTest {
-        // Simulate a device that already completed one full link + PIN setup
-        // for an earlier business - deviceBusinessId is only set by this call,
-        // same as the real PIN-setup flow in AuthNavGate.
+    fun wipesLocalDataWhenADifferentBusinessLinks() = runTest {
+        sessionManager.saveBusinessMembership("biz-old", MemberRole.OWNER)
+        db.smeDao().insertCustomer(
+            Customer(id = "old-biz-customer", name = "Business A", pendingSync = true)
+        )
+
+        sessionManager.saveBusinessMembership("biz-new", MemberRole.WORKER)
+
+        assertEquals(emptyList<Customer>(), db.smeDao().getAllCustomers().first())
+        assertEquals("biz-new", sessionManager.dataBusinessId.first())
+    }
+
+    @Test
+    fun keepsUnsyncedDataWhenTheSameBusinessSignsBackIn() = runTest {
         sessionManager.savePinAfterOnlineVerification(
             businessId = "biz-old",
             phoneNumberE164 = "+15555550100",
-            role = MemberRole.OWNER,
+            role = MemberRole.WORKER,
             firebaseUid = "uid-old",
             pin = "1234"
         )
-
+        sessionManager.saveBusinessMembership("biz-old", MemberRole.WORKER)
         db.smeDao().insertCustomer(
             Customer(id = "offline-work-1", name = "Recorded Offline", pendingSync = true)
         )
 
-        // Reassigned to a NEW business on the same device - accepted tradeoff
-        // per SMEDatabase.clearSyncedDataSuspending()'s doc, not this method's
-        // job to guard against.
-        sessionManager.saveBusinessMembership("biz-new", MemberRole.WORKER)
+        // Stale Firebase session / forgot PIN: the device credential is dropped and
+        // the user signs back in by OTP as the SAME business.
+        sessionManager.clearSession()
+        sessionManager.forgetDeviceCredential("biz-old")
+        sessionManager.saveBusinessMembership("biz-old", MemberRole.WORKER)
 
         assertEquals(listOf("offline-work-1"), db.smeDao().getAllCustomers().first().map { it.id })
+    }
+
+    @Test
+    fun isDataOwnedByIsFalseOnlyForADifferentBusiness() = runTest {
+        assertTrue(sessionManager.isDataOwnedBy("anything")) // no marker yet (legacy/fresh)
+
+        sessionManager.saveBusinessMembership("biz-a", MemberRole.OWNER)
+
+        assertTrue(sessionManager.isDataOwnedBy("biz-a"))
+        assertFalse(sessionManager.isDataOwnedBy("biz-b"))
+    }
+
+    @Test
+    fun firstEverLinkOnAnUpgradedInstallWithoutMarkerKeepsSameBusinessData() = runTest {
+        // An install from before the marker existed: deviceBusinessId is set, the
+        // marker is not. Signing back in to that same business must not wipe.
+        sessionManager.savePinAfterOnlineVerification(
+            businessId = "biz-legacy",
+            phoneNumberE164 = "+15555550100",
+            role = MemberRole.OWNER,
+            firebaseUid = "uid-legacy",
+            pin = "1234"
+        )
+        db.smeDao().insertCustomer(
+            Customer(id = "legacy-1", name = "Legacy", pendingSync = true)
+        )
+
+        sessionManager.saveBusinessMembership("biz-legacy", MemberRole.OWNER)
+
+        assertEquals(listOf("legacy-1"), db.smeDao().getAllCustomers().first().map { it.id })
     }
 
     @Test

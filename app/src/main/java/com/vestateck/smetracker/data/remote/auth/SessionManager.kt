@@ -54,6 +54,13 @@ private object Keys {
     // DataStore file as the session, which is excluded from Android backup, and
     // deliberately NOT cleared by clearSession(), so signing out and back in
     // can't be used to reset the failure counter.
+    // The business whose data currently sits in the Room database. Room entities
+    // are not businessId-scoped, so this single marker is what keeps one business's
+    // rows from being shown to, or pushed into, another business on a shared
+    // device. Set by saveBusinessMembership(); deliberately NOT cleared by
+    // clearSession() or forgetDeviceCredential(), because the rows outlive both.
+    val DATA_BUSINESS_ID = stringPreferencesKey("data_business_id")
+
     val PIN_FAILURES = intPreferencesKey("pin_failures")
     val PIN_LOCKED_UNTIL = longPreferencesKey("pin_locked_until")
 }
@@ -88,6 +95,35 @@ class SessionManager(
         }
 
     /**
+     * businessId that owns the rows currently in Room, or null if unknown
+     * (fresh install, or an install that predates this marker). See
+     * [isDataOwnedBy] and [saveBusinessMembership].
+     */
+    val dataBusinessId: Flow<String?> = context.sessionDataStore.data
+        .catch { e -> if (e is IOException) emit(emptyPreferences()) else throw e }
+        .map { prefs -> prefs[Keys.DATA_BUSINESS_ID] }
+
+    /**
+     * False only when Room is known to hold a DIFFERENT business's data.
+     * SyncEngine checks this before attaching listeners or pushing, as a second
+     * line of defence behind the wipe in [saveBusinessMembership]. A null marker
+     * (legacy install) counts as owned, so existing users are not blocked.
+     */
+    suspend fun isDataOwnedBy(businessId: String): Boolean {
+        val owner = dataBusinessId.first()
+        return owner == null || owner == businessId
+    }
+
+    /**
+     * Forgets which business owns the local data. Call it only right after wiping
+     * Room (for example a future "reset this device" action); the next link then
+     * wipes again, which is harmless.
+     */
+    suspend fun clearLocalDataOwner() {
+        context.sessionDataStore.edit { it.remove(Keys.DATA_BUSINESS_ID) }
+    }
+
+    /**
      * businessId of the account this device can log into via local PIN with
      * zero network (plain GSM/SMS-only areas) - null if this device has never
      * completed a full online verification for any business, or if that
@@ -109,29 +145,40 @@ class SessionManager(
     /**
      * Called once phoneIndex lookup resolves (post sign-in or post sign-up).
      *
-     * deviceBusinessId stays null until this device has completed a full
-     * link for SOME business (see its doc comment above - it's only set
-     * once PIN setup finishes, right after this). So null here means this
-     * is that device's first-ever business link, and any local Room data
-     * already sitting there predates a legitimate business relationship on
-     * this device - leftover dev/test rows, or anything recorded before
-     * Firebase Auth was wired up. Must be discarded before SyncEngine can
-     * start (see MainActivity's onEnterApp -> syncEngine.start()), or
-     * pushAllPending() would upload it into whatever business is being
-     * linked now. See SMEDatabase.clearAllTablesSuspending() doc.
+     * Room is not businessId-scoped, so before recording the new membership this
+     * decides whether the rows already in Room belong to the business being linked:
      *
-     * A device being reassigned to a NEW business after a normal sign-out
-     * from a PREVIOUS one doesn't hit this branch (deviceBusinessId is
-     * already set) - that's a separate, already-accepted tradeoff, see
-     * SMEDatabase.clearSyncedDataSuspending()'s doc comment.
+     *  - Same business as the last link: KEEP everything, including unsynced
+     *    (pendingSync) rows. A stale Firebase session or "forgot PIN" followed by
+     *    an OTP login as the same business must not destroy offline work.
+     *  - A different business, or no known previous owner (first-ever link on
+     *    this device): WIPE every table. Those rows belong to someone else (or to
+     *    nothing) and must never be shown to, or pushed into, this business.
+     *
+     * The previous owner is read from [Keys.DATA_BUSINESS_ID]. Installs that
+     * predate that marker fall back to the old signals (deviceBusinessId, then the
+     * last session's businessId), so upgrading users keep their data when they
+     * sign back in to the same business. The marker is written in the same
+     * DataStore edit as the membership, so the two cannot disagree. Must run
+     * before SyncEngine starts (see MainActivity's onEnterApp).
+     *
+     * Wiping on a business switch does discard that device's unsynced rows for
+     * the OTHER business; they cannot be pushed anywhere correct from here.
      */
     suspend fun saveBusinessMembership(businessId: String, role: MemberRole) {
-        if (deviceBusinessId.first() == null) {
+        val prefs = context.sessionDataStore.data
+            .catch { e -> if (e is IOException) emit(emptyPreferences()) else throw e }
+            .first()
+        val previousOwner = prefs[Keys.DATA_BUSINESS_ID]
+            ?: prefs[Keys.DEVICE_BUSINESS_ID]
+            ?: prefs[Keys.BUSINESS_ID]
+        if (previousOwner != businessId) {
             database.clearAllTablesSuspending()
         }
-        context.sessionDataStore.edit { prefs ->
-            prefs[Keys.BUSINESS_ID] = businessId
-            prefs[Keys.ROLE] = role.name.lowercase()
+        context.sessionDataStore.edit { p ->
+            p[Keys.BUSINESS_ID] = businessId
+            p[Keys.ROLE] = role.name.lowercase()
+            p[Keys.DATA_BUSINESS_ID] = businessId
         }
     }
 
@@ -140,6 +187,7 @@ class SessionManager(
      * matching local_credentials row alone - see the Keys.DEVICE_BUSINESS_ID
      * doc comment above for why. Call forgetDeviceCredential() as well if the
      * user explicitly wants this device to forget the PIN too.
+     * Also leaves Keys.DATA_BUSINESS_ID alone: the local rows outlive the session.
      */
     suspend fun clearSession() {
         context.sessionDataStore.edit { prefs ->

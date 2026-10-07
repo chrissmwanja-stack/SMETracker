@@ -125,23 +125,16 @@ class MainActivity : ComponentActivity() {
                                         // signOut()'s completion callback closes that race.
                                         authViewModel.signOut {
                                             syncEngine.stop()
-                                            // Room isn't clearing here on purpose. It's not
-                                            // businessId-scoped (see SMEDatabase's doc comments on
-                                            // clearSyncedDataSuspending()/clearAllTablesSuspending()),
-                                            // but that only matters if a DIFFERENT business could log
-                                            // into this device next - and SessionManager already
-                                            // handles that: saveBusinessMembership() does a full wipe
-                                            // whenever deviceBusinessId is null, which is exactly the
-                                            // "first link" and "after use a different account /
-                                            // forgetDeviceCredential()" cases. A normal same-business
-                                            // sign-out -> PIN re-login never touches deviceBusinessId,
-                                            // so the data sitting in Room is still this business's own
-                                            // data and stays valid to reuse as-is. Clearing it here too
-                                            // was redundant - same net state at any future business
-                                            // switch, since that switch does a full wipe regardless -
-                                            // and cost every sign-out a full Firestore re-download,
-                                            // which matters a lot on the GSM/2G connections this app
-                                            // targets.
+                                            // Room isn't cleared here on purpose. It's not
+                                            // businessId-scoped, so SessionManager keeps a
+                                            // "data owner" marker instead: saveBusinessMembership()
+                                            // wipes Room when a DIFFERENT business links, keeps it
+                                            // (including unsynced rows) when the SAME business
+                                            // signs back in, and SyncEngine refuses to sync if the
+                                            // marker disagrees with the session. Clearing here too
+                                            // would cost every sign-out a full Firestore
+                                            // re-download on slow connections and could destroy
+                                            // unsynced offline work.
                                             entered = null
                                         }
                                     },
