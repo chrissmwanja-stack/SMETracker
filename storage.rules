@@ -47,10 +47,17 @@ service firebase.storage {
     // generic {imageId} - kept as a named capture for readability, but any
     // itemId under a business the requester belongs to is fair game since
     // isMemberOf(businessId) already scopes it.
+    //
+    // Members can still add and replace photos: firestore.rules lets any member
+    // update any item, and the app uploads the photo BEFORE the item doc exists,
+    // so tying a replacement to the item's creator would leave a worker's edit of
+    // an owner-created item stuck retrying. Deletes are owner-only, matching the
+    // inventory delete rule in firestore.rules (the app itself never deletes
+    // Storage files).
     match /businesses/{businessId}/inventory/{itemId} {
       allow read: if isMemberOf(businessId);
-      allow write: if isMemberOf(businessId) && isValidImage();
-      allow delete: if isMemberOf(businessId);
+      allow create, update: if isMemberOf(businessId) && isValidImage();
+      allow delete: if isOwnerOf(businessId);
     }
 
     // Expenses are read-restricted in Firestore (workers see only their own),
@@ -81,13 +88,32 @@ service firebase.storage {
       allow read: if isOwnerOf(businessId)
         || (isMemberOf(businessId) && expenseRecordedBy() == myPhone());
 
-      // Write stays member-scoped rather than owner-matched: the receipt
-      // upload happens BEFORE the Firestore expense doc is written (see
-      // ExpenseSync.pushPending), so there's no recordedBy to check yet at
-      // upload time - the doc write immediately after is what actually
-      // establishes ownership, and Firestore's own create rule already
-      // requires that doc's recordedBy to equal the uploader's phone.
-      allow write: if isMemberOf(businessId) && isValidImage();
+      // Writes mirror the Firestore expense rules (a worker only ever touches
+      // their own expenses): an owner may write any receipt; a member may write
+      // one only if its expense doc does not exist yet or was recorded by them.
+      //
+      // "Does not exist yet" is the first-upload case: ExpenseSync.pushPending
+      // uploads the receipt BEFORE writing the expense doc, so there is no
+      // recordedBy to check yet, and the doc write immediately after is what
+      // establishes ownership (Firestore's create rule requires recordedBy to equal
+      // the uploader's phone). Expense ids are random and unguessable, so nobody
+      // can pre-claim another member's future receipt path. Once the doc exists,
+      // only its recorder (or an owner) can overwrite the receipt, so one worker
+      // can no longer replace another worker's proof of expense.
+      function receiptDocPath() {
+        let docId = expenseId[0:expenseId.size() - 4];
+        return /databases/(default)/documents/businesses/$(businessId)/expenses/$(docId);
+      }
+
+      function canWriteReceipt() {
+        return isOwnerOf(businessId)
+          || (isMemberOf(businessId)
+              && (!firestore.exists(receiptDocPath())
+                  || firestore.get(receiptDocPath()).data.recordedBy == myPhone()));
+      }
+
+      allow create, update: if isValidImage() && canWriteReceipt();
+
       allow delete: if isOwnerOf(businessId);
     }
   }
